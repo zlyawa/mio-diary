@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)
 ![Node](https://img.shields.io/badge/node-18%2B-green.svg)
 ![React](https://img.shields.io/badge/react-18.3-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![License](https://img.shields.io/badge/license-ISC-orange.svg)
 
 一个功能完善、设计精美的个人日记管理系统
 
@@ -117,8 +117,8 @@ Mio的日记本是一个现代化的全栈个人日记应用，采用前后端�
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/mio-diary-project.git
-cd mio-diary-project
+git clone https://github.com/zlyawa/mio-diary.git
+cd mio-diary
 
 # 运行一键安装脚本
 bash install.sh
@@ -392,6 +392,29 @@ ISC License
 ![功能展示6](./screenshots/6.jpg)
 
 > **版权声明**：部分预览图中的图片及表情包来源于网络、B站等平台。本项目仅供学习交流使用，所有内容完全公开开源，不用于商业用途。
+
+## 贡献
+
+欢迎贡献代码、报告问题或提出改进建议！
+
+### 如何贡献
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'feat: Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+### 提交规范
+
+遵循 Conventional Commits 规范：
+- `feat`: 新功能
+- `fix`: 修复 bug
+- `docs`: 文档更新
+- `style`: 代码格式调整
+- `refactor`: 重构
+- `test`: 测试相关
+- `chore`: 构建/工具链相关
 
 ## 联系方式
 
