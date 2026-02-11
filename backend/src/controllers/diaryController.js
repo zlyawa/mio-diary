@@ -263,13 +263,48 @@ const updateDiary = async (req, res, next) => {
       updateData.tags = JSON.stringify(cleanTags(tags));
     }
 
+    // 处理图片更新，需要清理被移除的图片
+    const oldImages = safeJsonParse(existingDiary.images, []);
+    let newImages = oldImages; // 默认保持不变
+
     if (images !== undefined) {
-      updateData.images = JSON.stringify(cleanImages(images));
+      newImages = cleanImages(images);
+      updateData.images = JSON.stringify(newImages);
     }
 
     const diary = await prisma.diary.update({
       where: { id },
       data: updateData,
+    });
+
+    // 清理被移除的图片文件（旧有但新列表中没有的）
+    const fs = require('fs');
+    const path = require('path');
+    const UPLOADS_DIR = path.join(__dirname, '../../uploads');
+    
+    const imagesToDelete = oldImages.filter(img => !newImages.includes(img));
+    
+    imagesToDelete.forEach((imagePath) => {
+      try {
+        // imagePath 格式: /uploads/filename.ext
+        // 提取文件名
+        let filename = imagePath;
+        if (imagePath.startsWith('/uploads/')) {
+          filename = imagePath.substring('/uploads/'.length);
+        } else if (imagePath.startsWith('uploads/')) {
+          filename = imagePath.substring('uploads/'.length);
+        }
+        
+        // 构建完整的文件路径
+        const fullImagePath = path.join(UPLOADS_DIR, filename);
+        
+        if (fs.existsSync(fullImagePath)) {
+          fs.unlinkSync(fullImagePath);
+        }
+      } catch (err) {
+        // 图片删除失败不影响整体操作
+        console.error(`删除图片失败: ${imagePath}`, err);
+      }
     });
 
     const parsedDiary = {
@@ -309,8 +344,40 @@ const deleteDiary = async (req, res, next) => {
       });
     }
 
+    // 获取日记关联的图片列表
+    const images = safeJsonParse(existingDiary.images, []);
+
+    // 删除数据库记录
     await prisma.diary.delete({
       where: { id },
+    });
+
+    // 清理关联的图片文件
+    const fs = require('fs');
+    const path = require('path');
+    const UPLOADS_DIR = path.join(__dirname, '../../uploads');
+    
+    images.forEach((imagePath) => {
+      try {
+        // imagePath 格式: /uploads/filename.ext
+        // 提取文件名
+        let filename = imagePath;
+        if (imagePath.startsWith('/uploads/')) {
+          filename = imagePath.substring('/uploads/'.length);
+        } else if (imagePath.startsWith('uploads/')) {
+          filename = imagePath.substring('uploads/'.length);
+        }
+        
+        // 构建完整的文件路径
+        const fullImagePath = path.join(UPLOADS_DIR, filename);
+        
+        if (fs.existsSync(fullImagePath)) {
+          fs.unlinkSync(fullImagePath);
+        }
+      } catch (err) {
+        // 图片删除失败不影响整体操作，记录错误即可
+        console.error(`删除图片失败: ${imagePath}`, err);
+      }
     });
 
     res.json({ message: '日记删除成功' });
