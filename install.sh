@@ -85,10 +85,51 @@ check_services() {
     fi
 }
 
+# 生成 JWT 密钥
+generate_jwt_secrets() {
+    local env_file="$BACKEND_DIR/.env"
+    local default_jwt_secret="mio-diary-secret-key-2026-must-be-at-least-32-chars-long"
+    local default_refresh_secret="mio-diary-refresh-secret-key-2026-must-be-at-least-32-chars-long"
+
+    if [ ! -f "$env_file" ]; then
+        echo -e "${RED}错误: .env 文件不存在${NC}"
+        return 1
+    fi
+
+    local needs_update=false
+    local new_jwt_secret
+    local new_refresh_secret
+
+    # 检查 JWT_SECRET 是否是默认值
+    if grep -q "^JWT_SECRET=\"$default_jwt_secret\"" "$env_file"; then
+        echo -e "${YELLOW}检测到默认 JWT_SECRET，生成新密钥...${NC}"
+        new_jwt_secret=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+        sed -i "s/^JWT_SECRET=\"$default_jwt_secret\"/JWT_SECRET=\"$new_jwt_secret\"/" "$env_file"
+        needs_update=true
+    fi
+
+    # 检查 JWT_REFRESH_SECRET 是否是默认值
+    if grep -q "^JWT_REFRESH_SECRET=\"$default_refresh_secret\"" "$env_file"; then
+        echo -e "${YELLOW}检测到默认 JWT_REFRESH_SECRET，生成新密钥...${NC}"
+        new_refresh_secret=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+        sed -i "s/^JWT_REFRESH_SECRET=\"$default_refresh_secret\"/JWT_REFRESH_SECRET=\"$new_refresh_secret\"/" "$env_file"
+        needs_update=true
+    fi
+
+    if [ "$needs_update" = true ]; then
+        echo -e "${GREEN}✅ JWT 密钥已更新${NC}"
+    else
+        echo -e "${GREEN}✅ JWT 密钥已配置，无需更新${NC}"
+    fi
+}
+
 # 安装依赖
 install() {
     echo -e "${BLUE}开始安装依赖...${NC}"
     check_nodejs
+
+    echo -e "${YELLOW}生成 JWT 密钥...${NC}"
+    generate_jwt_secrets
 
     echo -e "${YELLOW}安装后端依赖...${NC}"
     cd "$BACKEND_DIR"

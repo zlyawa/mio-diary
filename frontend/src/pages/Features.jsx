@@ -48,28 +48,28 @@ const FEATURES_CONFIG = [
   {
     id: 'writing',
     icon: PenTool,
-    title: '✏️ 梦想写作',
+    title: '梦想写作',
     description: '超好用的编辑器，让你的文字闪闪发光✨',
     color: 'pink',
     features: [
-      '✨ 随心所欲的富文本编辑',
-      '💖 记录每个可爱的心情',
-      '📷 上传美美的图片',
-      '💾 自动保存草稿哦'
+      '随心所欲的富文本编辑',
+      '记录每个可爱的心情',
+      '上传美美的图片',
+      '自动保存草稿哦'
     ],
     emoji: '📝'
   },
   {
     id: 'security',
     icon: Shield,
-    title: '🔒 绝对安全',
+    title: '绝对安全',
     description: '你的秘密日记只有你能看到哦！',
     color: 'green',
     features: [
-      '🛡️ 超级安全的身份认证',
-      '🔐 数据加密超级安全',
-      '⚡ Token 自动刷新保护',
-      '📤 安全上传文件'
+      '超级安全的身份认证',
+      '数据加密超级安全',
+      'Token 自动刷新保护',
+      '安全上传文件'
     ],
     emoji: '🛡️'
   }
@@ -363,7 +363,7 @@ const Features = () => {
               <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
             </button>
             <p className="mt-6 text-gray-500 dark:text-gray-400 text-sm">
-              免费使用 • 无需信用卡 • 随时可以退出 ✨
+              免费使用 • 随时可以退出 ✨
             </p>
           </div>
         </div>
