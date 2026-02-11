@@ -278,7 +278,7 @@ cd backend
 npx prisma migrate reset
 ```
 
-更多问题请查看 [INSTALL.md](INSTALL.md)
+更多问题请查看 [INSTALL.md](docs/INSTALL.md)
 
 ---
 
@@ -349,7 +349,7 @@ mio-diary-project/
 ## 部署
 
 ### 开发环境
-参考 [DEVELOPMENT.md](DEVELOPMENT.md)
+参考 [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 ### 生产环境
 支持多种部署方案：
