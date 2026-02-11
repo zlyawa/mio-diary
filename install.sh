@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Mio的日记本 - 一键安装启动脚本
-# 功能：检查安装状态、安装依赖、启动服务、删除安装
+# Mio的日记本 - 一键安装启动脚本（修复版）
+# 功能：检查安装状态、安装依赖、初始化数据库、启动服务、删除安装
 
 set -e
 
@@ -46,6 +46,11 @@ check_installed() {
 
     if [ -d "$FRONTEND_DIR/node_modules" ] && [ -f "$FRONTEND_DIR/package-lock.json" ]; then
         frontend_installed=true
+    fi
+
+    # 检查数据库是否已初始化
+    if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
+        echo -e "${GREEN}✓ 数据库文件存在${NC}"
     fi
 
     if [ "$backend_installed" = true ] && [ "$frontend_installed" = true ]; then
@@ -123,6 +128,46 @@ generate_jwt_secrets() {
     fi
 }
 
+# ============== 新增：初始化数据库 ==============
+init_database() {
+    echo -e "${YELLOW}初始化数据库...${NC}"
+    cd "$BACKEND_DIR"
+    
+    # 生成 Prisma 客户端
+    echo -e "${YELLOW}生成 Prisma 客户端...${NC}"
+    npx prisma generate
+    
+    # 检查数据库文件是否存在
+    if [ ! -f "$BACKEND_DIR/prisma/dev.db" ]; then
+        echo -e "${YELLOW}创建新的数据库文件...${NC}"
+    fi
+    
+    # 执行数据库迁移
+    echo -e "${YELLOW}执行数据库迁移...${NC}"
+    if npx prisma migrate deploy 2>/dev/null; then
+        echo -e "${GREEN}✅ 迁移部署成功${NC}"
+    else
+        echo -e "${YELLOW}没有可用的迁移，创建初始迁移...${NC}"
+        npx prisma migrate dev --name init --create-only --skip-generate 2>/dev/null || true
+        npx prisma migrate deploy || npx prisma db push
+    fi
+    
+    # 确保数据库是最新状态
+    npx prisma db push --accept-data-loss
+    
+    # 验证数据库连接和表
+    echo -e "${YELLOW}验证数据库...${NC}"
+    if npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null; then
+        echo -e "${GREEN}✅ User 表创建成功${NC}"
+    else
+        echo -e "${RED}⚠️  User 表创建失败，尝试直接推送...${NC}"
+        npx prisma db push --force-reset
+    fi
+    
+    echo -e "${GREEN}✅ 数据库初始化完成${NC}"
+}
+# ===============================================
+
 # 安装依赖
 install() {
     echo -e "${BLUE}开始安装依赖...${NC}"
@@ -141,6 +186,10 @@ install() {
     npm install
     echo -e "${GREEN}前端依赖安装完成${NC}"
 
+    # ============== 新增：安装后初始化数据库 ==============
+    init_database
+    # ====================================================
+
     echo -e "${GREEN}✅ 安装完成！${NC}"
 }
 
@@ -149,6 +198,23 @@ start() {
     if ! check_installed; then
         echo -e "${YELLOW}未检测到完整安装，开始安装...${NC}"
         install
+    else
+        # ============== 新增：启动前检查数据库 ==============
+        echo -e "${YELLOW}检查数据库状态...${NC}"
+        if [ ! -f "$BACKEND_DIR/prisma/dev.db" ]; then
+            echo -e "${YELLOW}数据库文件不存在，初始化数据库...${NC}"
+            init_database
+        else
+            # 验证表是否存在
+            cd "$BACKEND_DIR"
+            if ! npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null | grep -q "User"; then
+                echo -e "${YELLOW}User 表不存在，更新数据库...${NC}"
+                npx prisma db push
+            else
+                echo -e "${GREEN}✓ 数据库已就绪${NC}"
+            fi
+        fi
+        # ================================================
     fi
 
     if check_services; then
@@ -203,7 +269,7 @@ stop() {
 # 删除安装
 uninstall() {
     echo -e "${RED}警告: 这将删除所有安装的依赖和数据库！${NC}"
-    read -p "确定要继续吗？: " confirm
+    read -p "确定要继续吗? (输入 yes 确认): " confirm
 
     if [ "$confirm" != "yes" ]; then
         echo "取消删除"
@@ -214,7 +280,8 @@ uninstall() {
 
     echo -e "${YELLOW}删除后端依赖...${NC}"
     rm -rf "$BACKEND_DIR/node_modules"
-    rm -rf "$BACKEND_DIR/prisma/dev.db"
+    rm -f "$BACKEND_DIR/prisma/dev.db"
+    rm -f "$BACKEND_DIR/prisma/migrations"
     rm -f "$BACKEND_DIR/package-lock.json"
 
     echo -e "${YELLOW}删除前端依赖...${NC}"
@@ -231,10 +298,25 @@ show_status() {
 
     # 安装状态
     if check_installed; then
-        echo -e "${GREEN}✓ 已安装${NC}"
+        echo -e "${GREEN}✓ 依赖已安装${NC}"
     else
-        echo -e "${YELLOW}✗ 未安装${NC}"
+        echo -e "${YELLOW}✗ 依赖未安装${NC}"
     fi
+    
+    # ============== 新增：数据库状态 ==============
+    if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
+        echo -e "${GREEN}✓ 数据库文件存在${NC}"
+        # 检查 User 表
+        cd "$BACKEND_DIR"
+        if npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null | grep -q "User"; then
+            echo -e "${GREEN}✓ User 表已创建${NC}"
+        else
+            echo -e "${RED}✗ User 表不存在${NC}"
+        fi
+    else
+        echo -e "${RED}✗ 数据库文件不存在${NC}"
+    fi
+    # =============================================
 
     # 服务状态
     echo -e "\n${BLUE}服务状态:${NC}"
@@ -275,8 +357,8 @@ show_help() {
     echo "用法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  install   安装依赖"
-    echo "  start     启动服务"
+    echo "  install   安装依赖并初始化数据库"
+    echo "  start     启动服务（自动初始化数据库）"
     echo "  stop      停止服务"
     echo "  restart   重启服务"
     echo "  status    查看状态"
@@ -289,12 +371,19 @@ show_help() {
 interactive_menu() {
     while true; do
         echo -e "\n${BLUE}=== Mio的日记本 ===${NC}"
+        echo ""
 
         # 显示当前状态
         if check_installed; then
-            echo -e "${GREEN}[已安装]${NC}"
+            echo -e "${GREEN}[依赖已安装]${NC}"
         else
-            echo -e "${YELLOW}[未安装]${NC}"
+            echo -e "${YELLOW}[依赖未安装]${NC}"
+        fi
+
+        if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
+            echo -e "${GREEN}[数据库已初始化]${NC}"
+        else
+            echo -e "${YELLOW}[数据库未初始化]${NC}"
         fi
 
         if check_services; then
@@ -304,12 +393,12 @@ interactive_menu() {
         fi
 
         echo ""
-        echo "1. 安装"
-        echo "2. 启动"
-        echo "3. 停止"
-        echo "4. 重启"
-        echo "5. 状态"
-        echo "6. 删除"
+        echo "1. 安装并初始化"
+        echo "2. 启动服务"
+        echo "3. 停止服务"
+        echo "4. 重启服务"
+        echo "5. 查看状态"
+        echo "6. 删除安装"
         echo "0. 退出"
         echo ""
         read -p "请选择 (0-6): " choice
