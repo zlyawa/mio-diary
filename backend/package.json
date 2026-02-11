@@ -1,0 +1,29 @@
+{
+    "name": "backend",
+    "version": "1.0.0",
+    "description": "Mio的日记本 - 后端API",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "node src/server.js",
+        "migrate": "npx prisma migrate dev",
+        "generate": "npx prisma generate",
+        "studio": "npx prisma studio"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "dependencies": {
+        "@prisma/client": "^6.2.1",
+        "bcryptjs": "^2.4.3",
+        "compression": "^1.8.1",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "jsonwebtoken": "^9.0.2",
+        "multer": "^2.0.0-rc.4",
+        "prisma": "^6.2.1",
+        "sharp": "^0.34.5"
+    }
+}
