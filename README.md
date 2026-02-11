@@ -314,12 +314,14 @@ mio-diary-project/
 │   │   └── main.jsx           # 入口文件
 │   ├── public/                # 静态资源
 │   └── package.json
+├── docs/                       # 项目文档
+│   ├── INSTALL.md              # 安装指南
+│   ├── DEVELOPMENT.md          # 开发指南
+│   ├── CHANGELOG.md            # 更新日志
+│   └── GITHUB.md               # GitHub 发布说明
+├── screenshots/                # 功能截图
 ├── install.sh                  # 一键安装脚本
-├── README.md                   # 项目说明
-├── INSTALL.md                  # 安装指南
-├── DEVELOPMENT.md              # 开发指南
-├── CHANGELOG.md                # 更新日志
-└── GITHUB.md                   # GitHub 发布说明
+└── README.md                   # 项目说明
 ```
 
 ---
@@ -328,10 +330,10 @@ mio-diary-project/
 
 | 文档 | 说明 |
 |------|------|
-| [INSTALL.md](INSTALL.md) | 安装指南、环境配置 |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | 开发环境设置、项目结构 |
-| [CHANGELOG.md](CHANGELOG.md) | 版本更新日志 |
-| [GITHUB.md](GITHUB.md) | GitHub 发布说明 |
+| [INSTALL.md](docs/INSTALL.md) | 安装指南、环境配置 |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发环境设置、项目结构 |
+| [CHANGELOG.md](docs/CHANGELOG.md) | 版本更新日志 |
+| [GITHUB.md](docs/GITHUB.md) | GitHub 发布说明 |
 
 ---
 

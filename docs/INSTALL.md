@@ -140,11 +140,14 @@ mio-diary-project/
 ├── frontend/        # 前端应用
 │   ├── src/         # 源代码
 │   └── public/      # 静态资源
+├── docs/            # 项目文档
+│   ├── INSTALL.md   # 安装指南
+│   ├── DEVELOPMENT.md # 开发指南
+│   ├── CHANGELOG.md # 更新日志
+│   └── GITHUB.md    # GitHub 说明
+├── screenshots/     # 功能截图
 ├── install.sh       # 一键安装脚本
-├── README.md        # 项目说明
-├── INSTALL.md       # 安装指南
-├── DEVELOPMENT.md   # 开发指南
-└── CHANGELOG.md     # 更新日志
+└── README.md        # 项目说明
 ```
 
 ## 常见问题
