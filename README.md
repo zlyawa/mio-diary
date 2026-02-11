@@ -382,7 +382,7 @@ ISC License
 
 ---
 
-## 截图预览
+## 手机端截图预览
 
 <div align="center">
 
