@@ -1,449 +1,446 @@
 #!/bin/bash
 
-# Mio的日记本 - 一键安装启动脚本（修复版）
-# 功能：检查安装状态、安装依赖、初始化数据库、启动服务、删除安装
+############################################
+# Mio Diary - 一键安装脚本
+# 描述: 自动安装并启动 Mio 日记应用
+# 作者: zly
+# 版本: v1.2.0
+############################################
 
-set -e
+set -e  # 遇到错误立即退出
+set -u  # 使用未定义变量时退出
+
+# 脚本参数
+PROJECT_NAME="Mio Diary"
+BACKEND_PORT=3001
+FRONTEND_PORT=5173
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# 项目目录
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$PROJECT_DIR/backend"
-FRONTEND_DIR="$PROJECT_DIR/frontend"
+# 图标
+INFO="[INFO]"
+SUCCESS="[✓]"
+ERROR="[✗]"
+WARN="[!]"
 
-# PID 文件
-BACKEND_PID_FILE="$PROJECT_DIR/.backend.pid"
-FRONTEND_PID_FILE="$PROJECT_DIR/.frontend.pid"
+############################################
+# 日志函数
+############################################
 
-# 检查 Node.js
-check_nodejs() {
-    if ! command -v node &> /dev/null; then
-        echo -e "${RED}错误: 未安装 Node.js${NC}"
-        echo "请先安装 Node.js 18+: https://nodejs.org/"
+log_info() {
+    echo -e "${CYAN}${INFO}${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}${SUCCESS}${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}${ERROR}${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}${WARN}${NC} $1"
+}
+
+log_step() {
+    echo -e "\n${BLUE}➤${NC} $1"
+}
+
+############################################
+# 检查命令是否存在
+############################################
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+############################################
+# 检查端口是否被占用
+############################################
+
+check_port() {
+    local port=$1
+    if command_exists lsof; then
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            return 1  # 端口被占用
+        fi
+    elif command_exists netstat; then
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            return 1  # 端口被占用
+        fi
+    fi
+    return 0  # 端口可用
+}
+
+############################################
+# 打印头部信息
+############################################
+
+print_header() {
+    cat << "EOF"
+
+╔═══════════════════════════════════════╗
+║                                       ║
+║         Mio's Diary - 日记本          ║
+║        一键安装脚本 v1.2.0            ║
+║                                       ║
+╚═══════════════════════════════════════╝
+
+EOF
+}
+
+############################################
+# 环境检查
+############################################
+
+check_environment() {
+    log_step "正在检查系统环境..."
+    
+    local all_good=true
+    
+    # 检查 Node.js
+    if command_exists node; then
+        NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+        log_info "Node.js 版本: $(node -v)"
+        
+        if [ "$NODE_VERSION" -lt 18 ]; then
+            log_error "Node.js 版本过低，需要 18.x 或更高版本"
+            all_good=false
+        else
+            log_success "Node.js 版本检查通过"
+        fi
+    else
+        log_error "未检测到 Node.js，请先安装 Node.js 18+"
+        log_info "Ubuntu/Debian: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+        log_info "macOS: brew install node"
+        all_good=false
+    fi
+    
+    # 检查 npm
+    if command_exists npm; then
+        log_info "npm 版本: $(npm -v)"
+        log_success "npm 已安装"
+    else
+        log_error "未检测到 npm"
+        all_good=false
+    fi
+    
+    # 检查 git
+    if command_exists git; then
+        log_info "Git 版本: $(git --version)"
+        log_success "Git 已安装"
+    else
+        log_error "未检测到 Git"
+        all_good=false
+    fi
+    
+    if [ "$all_good" = false ]; then
+        log_error "环境检查失败，请安装缺失的依赖后重试"
         exit 1
     fi
-    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 18 ]; then
-        echo -e "${RED}错误: Node.js 版本过低 (需要 18+，当前: $(node -v))${NC}"
-        exit 1
-    fi
-}
-
-# 检查是否已安装
-check_installed() {
-    local backend_installed=false
-    local frontend_installed=false
-
-    if [ -d "$BACKEND_DIR/node_modules" ] && [ -f "$BACKEND_DIR/package-lock.json" ]; then
-        backend_installed=true
-    fi
-
-    if [ -d "$FRONTEND_DIR/node_modules" ] && [ -f "$FRONTEND_DIR/package-lock.json" ]; then
-        frontend_installed=true
-    fi
-
-    # 检查数据库是否已初始化
-    if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
-        echo -e "${GREEN}✓ 数据库文件存在${NC}"
-    fi
-
-    if [ "$backend_installed" = true ] && [ "$frontend_installed" = true ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 检查服务状态
-check_services() {
-    local backend_running=false
-    local frontend_running=false
-
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        local pid=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
-            backend_running=true
-        else
-            rm -f "$BACKEND_PID_FILE"
-        fi
-    fi
-
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        local pid=$(cat "$FRONTEND_PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
-            frontend_running=true
-        else
-            rm -f "$FRONTEND_PID_FILE"
-        fi
-    fi
-
-    if [ "$backend_running" = true ] || [ "$frontend_running" = true ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 生成 JWT 密钥
-generate_jwt_secrets() {
-    local env_file="$BACKEND_DIR/.env"
-    local default_jwt_secret="mio-diary-secret-key-2026-must-be-at-least-32-chars-long"
-    local default_refresh_secret="mio-diary-refresh-secret-key-2026-must-be-at-least-32-chars-long"
-
-    if [ ! -f "$env_file" ]; then
-        echo -e "${RED}错误: .env 文件不存在${NC}"
-        return 1
-    fi
-
-    local needs_update=false
-    local new_jwt_secret
-    local new_refresh_secret
-
-    # 检查 JWT_SECRET 是否是默认值
-    if grep -q "^JWT_SECRET=\"$default_jwt_secret\"" "$env_file"; then
-        echo -e "${YELLOW}检测到默认 JWT_SECRET，生成新密钥...${NC}"
-        new_jwt_secret=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-        sed -i "s/^JWT_SECRET=\"$default_jwt_secret\"/JWT_SECRET=\"$new_jwt_secret\"/" "$env_file"
-        needs_update=true
-    fi
-
-    # 检查 JWT_REFRESH_SECRET 是否是默认值
-    if grep -q "^JWT_REFRESH_SECRET=\"$default_refresh_secret\"" "$env_file"; then
-        echo -e "${YELLOW}检测到默认 JWT_REFRESH_SECRET，生成新密钥...${NC}"
-        new_refresh_secret=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-        sed -i "s/^JWT_REFRESH_SECRET=\"$default_refresh_secret\"/JWT_REFRESH_SECRET=\"$new_refresh_secret\"/" "$env_file"
-        needs_update=true
-    fi
-
-    if [ "$needs_update" = true ]; then
-        echo -e "${GREEN}✅ JWT 密钥已更新${NC}"
-    else
-        echo -e "${GREEN}✅ JWT 密钥已配置，无需更新${NC}"
-    fi
-}
-
-# ============== 新增：初始化数据库 ==============
-init_database() {
-    echo -e "${YELLOW}初始化数据库...${NC}"
-    cd "$BACKEND_DIR"
     
-    # 生成 Prisma 客户端
-    echo -e "${YELLOW}生成 Prisma 客户端...${NC}"
-    npx prisma generate
+    log_success "环境检查完成"
+}
+
+############################################
+# 检查端口占用
+############################################
+
+check_ports() {
+    log_step "正在检查端口占用..."
     
-    # 检查数据库文件是否存在
-    if [ ! -f "$BACKEND_DIR/prisma/dev.db" ]; then
-        echo -e "${YELLOW}创建新的数据库文件...${NC}"
+    local port_conflict=false
+    
+    if ! check_port $BACKEND_PORT; then
+        log_warn "后端端口 $BACKEND_PORT 已被占用"
+        port_conflict=true
     fi
     
-    # 执行数据库迁移
-    echo -e "${YELLOW}执行数据库迁移...${NC}"
-    if npx prisma migrate deploy 2>/dev/null; then
-        echo -e "${GREEN}✅ 迁移部署成功${NC}"
-    else
-        echo -e "${YELLOW}没有可用的迁移，创建初始迁移...${NC}"
-        npx prisma migrate dev --name init --create-only --skip-generate 2>/dev/null || true
-        npx prisma migrate deploy || npx prisma db push
+    if ! check_port $FRONTEND_PORT; then
+        log_warn "前端端口 $FRONTEND_PORT 已被占用"
+        port_conflict=true
     fi
     
-    # 确保数据库是最新状态
-    npx prisma db push --accept-data-loss
-    
-    # 验证数据库连接和表
-    echo -e "${YELLOW}验证数据库...${NC}"
-    if npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null; then
-        echo -e "${GREEN}✅ User 表创建成功${NC}"
-    else
-        echo -e "${RED}⚠️  User 表创建失败，尝试直接推送...${NC}"
-        npx prisma db push --force-reset
-    fi
-    
-    echo -e "${GREEN}✅ 数据库初始化完成${NC}"
-}
-# ===============================================
-
-# 安装依赖
-install() {
-    echo -e "${BLUE}开始安装依赖...${NC}"
-    check_nodejs
-
-    echo -e "${YELLOW}生成 JWT 密钥...${NC}"
-    generate_jwt_secrets
-
-    echo -e "${YELLOW}安装后端依赖...${NC}"
-    cd "$BACKEND_DIR"
-    npm install
-    echo -e "${GREEN}后端依赖安装完成${NC}"
-
-    echo -e "${YELLOW}安装前端依赖...${NC}"
-    cd "$FRONTEND_DIR"
-    npm install
-    echo -e "${GREEN}前端依赖安装完成${NC}"
-
-    # ============== 新增：安装后初始化数据库 ==============
-    init_database
-    # ====================================================
-
-    echo -e "${GREEN}✅ 安装完成！${NC}"
-}
-
-# 启动服务
-start() {
-    if ! check_installed; then
-        echo -e "${YELLOW}未检测到完整安装，开始安装...${NC}"
-        install
-    else
-        # ============== 新增：启动前检查数据库 ==============
-        echo -e "${YELLOW}检查数据库状态...${NC}"
-        if [ ! -f "$BACKEND_DIR/prisma/dev.db" ]; then
-            echo -e "${YELLOW}数据库文件不存在，初始化数据库...${NC}"
-            init_database
-        else
-            # 验证表是否存在
-            cd "$BACKEND_DIR"
-            if ! npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null | grep -q "User"; then
-                echo -e "${YELLOW}User 表不存在，更新数据库...${NC}"
-                npx prisma db push
-            else
-                echo -e "${GREEN}✓ 数据库已就绪${NC}"
-            fi
-        fi
-        # ================================================
-    fi
-
-    if check_services; then
-        echo -e "${YELLOW}服务已在运行中${NC}"
-        show_status
-        return
-    fi
-
-    echo -e "${BLUE}启动服务...${NC}"
-
-    # 启动后端
-    cd "$BACKEND_DIR"
-    nohup npm start > "$PROJECT_DIR/backend.log" 2>&1 &
-    echo $! > "$BACKEND_PID_FILE"
-    echo -e "${GREEN}后端服务启动中... (端口 3001)${NC}"
-
-    # 等待后端启动
-    sleep 3
-
-    # 启动前端
-    cd "$FRONTEND_DIR"
-    nohup npm run dev > "$PROJECT_DIR/frontend.log" 2>&1 &
-    echo $! > "$FRONTEND_PID_FILE"
-    echo -e "${GREEN}前端服务启动中... (端口 5173)${NC}"
-
-    echo -e "${GREEN}✅ 服务启动成功！${NC}"
-    echo -e "${BLUE}前端访问: http://localhost:5173${NC}"
-    echo -e "${BLUE}后端API: http://localhost:3001/api${NC}"
-}
-
-# 停止服务
-stop() {
-    echo -e "${BLUE}停止服务...${NC}"
-
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        local pid=$(cat "$BACKEND_PID_FILE")
-        kill "$pid" 2>/dev/null || true
-        rm -f "$BACKEND_PID_FILE"
-        echo -e "${GREEN}后端服务已停止${NC}"
-    fi
-
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        local pid=$(cat "$FRONTEND_PID_FILE")
-        kill "$pid" 2>/dev/null || true
-        rm -f "$FRONTEND_PID_FILE"
-        echo -e "${GREEN}前端服务已停止${NC}"
-    fi
-
-    echo -e "${GREEN}✅ 所有服务已停止${NC}"
-}
-
-# 删除安装
-uninstall() {
-    echo -e "${RED}警告: 这将删除所有安装的依赖和数据库！${NC}"
-    read -p "确定要继续吗? (输入 yes 确认): " confirm
-
-    if [ "$confirm" != "yes" ]; then
-        echo "取消删除"
-        return
-    fi
-
-    stop
-
-    echo -e "${YELLOW}删除后端依赖...${NC}"
-    rm -rf "$BACKEND_DIR/node_modules"
-    rm -f "$BACKEND_DIR/prisma/dev.db"
-    rm -f "$BACKEND_DIR/prisma/migrations"
-    rm -f "$BACKEND_DIR/package-lock.json"
-
-    echo -e "${YELLOW}删除前端依赖...${NC}"
-    rm -rf "$FRONTEND_DIR/node_modules"
-    rm -rf "$FRONTEND_DIR/dist"
-    rm -f "$FRONTEND_DIR/package-lock.json"
-
-    echo -e "${GREEN}✅ 删除完成${NC}"
-}
-
-# 显示状态
-show_status() {
-    echo -e "\n${BLUE}=== 状态信息 ===${NC}"
-
-    # 安装状态
-    if check_installed; then
-        echo -e "${GREEN}✓ 依赖已安装${NC}"
-    else
-        echo -e "${YELLOW}✗ 依赖未安装${NC}"
-    fi
-    
-    # ============== 新增：数据库状态 ==============
-    if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
-        echo -e "${GREEN}✓ 数据库文件存在${NC}"
-        # 检查 User 表
-        cd "$BACKEND_DIR"
-        if npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='User';" 2>/dev/null | grep -q "User"; then
-            echo -e "${GREEN}✓ User 表已创建${NC}"
-        else
-            echo -e "${RED}✗ User 表不存在${NC}"
-        fi
-    else
-        echo -e "${RED}✗ 数据库文件不存在${NC}"
-    fi
-    # =============================================
-
-    # 服务状态
-    echo -e "\n${BLUE}服务状态:${NC}"
-
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        local pid=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ 后端运行中 (PID: $pid)${NC}"
-        else
-            echo -e "${RED}✗ 后端已停止${NC}"
-            rm -f "$BACKEND_PID_FILE"
-        fi
-    else
-        echo -e "${RED}✗ 后端未运行${NC}"
-    fi
-
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        local pid=$(cat "$FRONTEND_PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ 前端运行中 (PID: $pid)${NC}"
-        else
-            echo -e "${RED}✗ 前端已停止${NC}"
-            rm -f "$FRONTEND_PID_FILE"
-        fi
-    else
-        echo -e "${RED}✗ 前端未运行${NC}"
-    fi
-
-    echo -e "\n${BLUE}访问地址:${NC}"
-    echo -e "  前端: http://localhost:5173"
-    echo -e "  后端: http://localhost:3001/api"
-}
-
-# 显示帮助
-show_help() {
-    echo -e "${BLUE}Mio的日记本 - 一键管理脚本${NC}"
-    echo ""
-    echo "用法: $0 [选项]"
-    echo ""
-    echo "选项:"
-    echo "  install   安装依赖并初始化数据库"
-    echo "  start     启动服务（自动初始化数据库）"
-    echo "  stop      停止服务"
-    echo "  restart   重启服务"
-    echo "  status    查看状态"
-    echo "  uninstall 删除安装"
-    echo "  help      显示帮助"
-    echo ""
-}
-
-# 交互式菜单
-interactive_menu() {
-    while true; do
-        echo -e "\n${BLUE}=== Mio的日记本 ===${NC}"
-        echo ""
-
-        # 显示当前状态
-        if check_installed; then
-            echo -e "${GREEN}[依赖已安装]${NC}"
-        else
-            echo -e "${YELLOW}[依赖未安装]${NC}"
-        fi
-
-        if [ -f "$BACKEND_DIR/prisma/dev.db" ]; then
-            echo -e "${GREEN}[数据库已初始化]${NC}"
-        else
-            echo -e "${YELLOW}[数据库未初始化]${NC}"
-        fi
-
-        if check_services; then
-            echo -e "${GREEN}[服务运行中]${NC}"
-        else
-            echo -e "${YELLOW}[服务已停止]${NC}"
-        fi
-
-        echo ""
-        echo "1. 安装并初始化"
-        echo "2. 启动服务"
-        echo "3. 停止服务"
-        echo "4. 重启服务"
-        echo "5. 查看状态"
-        echo "6. 删除安装"
-        echo "0. 退出"
-        echo ""
-        read -p "请选择 (0-6): " choice
-
+    if [ "$port_conflict" = true ]; then
+        log_warn "检测到端口冲突，请选择:"
+        echo "  1) 继续安装（可能需要手动修改端口）"
+        echo "  2) 退出脚本"
+        read -p "请选择 [1-2]: " choice
+        
         case $choice in
-            1) install ;;
-            2) start ;;
-            3) stop ;;
-            4)
-                stop
-                sleep 1
-                start
-                ;;
-            5) show_status ;;
-            6) uninstall ;;
-            0) exit 0 ;;
-            *) echo -e "${RED}无效选择${NC}" ;;
+            1) log_info "继续安装，可能遇到端口冲突" ;;
+            2) log_info "退出安装"; exit 0 ;;
+            *) log_info "继续安装，可能遇到端口冲突" ;;
         esac
-    done
-}
-
-# 主函数
-main() {
-    if [ $# -eq 0 ]; then
-        interactive_menu
     else
-        case "$1" in
-            install) install ;;
-            start) start ;;
-            stop) stop ;;
-            restart)
-                stop
-                sleep 1
-                start
-                ;;
-            status) show_status ;;
-            uninstall) uninstall ;;
-            help|--help|-h) show_help ;;
-            *)
-                echo -e "${RED}未知选项: $1${NC}"
-                show_help
-                exit 1
-                ;;
-        esac
+        log_success "端口检查通过"
     fi
 }
 
-main "$@"
+############################################
+# 生成随机密钥
+############################################
+
+generate_secret_key() {
+    # 生成至少32字符的随机密钥
+    if command_exists openssl; then
+        openssl rand -base64 32 | tr -d "=+/" | cut -c1-32
+    else
+        # 备用方法
+        head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
+    fi
+}
+
+############################################
+# 安装后端依赖
+############################################
+
+install_backend() {
+    log_step "正在安装后端依赖..."
+    
+    cd backend
+    
+    # 检查 package.json 是否存在
+    if [ ! -f "package.json" ]; then
+        log_error "未找到 backend/package.json 文件"
+        exit 1
+    fi
+    
+    # 清理旧依赖（如果存在）
+    if [ -d "node_modules" ]; then
+        log_info "清理旧的 node_modules..."
+        rm -rf node_modules
+    fi
+    
+    # 安装依赖
+    log_info "正在运行 npm install..."
+    if npm install; then
+        log_success "后端依赖安装成功"
+    else
+        log_error "后端依赖安装失败"
+        exit 1
+    fi
+    
+    # 生成 JWT 密钥
+    log_info "生成安全的 JWT 密钥..."
+    
+    if [ -f ".env" ]; then
+        # 备份现有配置
+        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+        log_info "已备份现有 .env 文件"
+    fi
+    
+    JWT_SECRET=$(generate_secret_key)
+    JWT_REFRESH_SECRET=$(generate_secret_key)
+    
+    # 创建或更新 .env 文件
+    cat > .env << EOF
+# 数据库配置 (SQLite)
+DATABASE_URL="file:./dev.db"
+
+# 服务器配置
+PORT=$BACKEND_PORT
+HOST=localhost
+NODE_ENV=development
+
+# JWT 密钥（自动生成）
+JWT_SECRET=$JWT_SECRET
+JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
+
+# JWT 过期时间
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# 文件上传配置
+MAX_FILE_SIZE=5242880
+ALLOWED_IMAGE_TYPES=image/jpeg,image/jpg,image/png,image/gif,image/webp
+EOF
+    
+    log_success "JWT 密钥已生成并保存到 .env"
+    
+    # 初始化数据库
+    log_info "初始化数据库..."
+    
+    # 生成 Prisma Client
+    if npx prisma generate; then
+        log_success "Prisma Client 生成成功"
+    else
+        log_warn "Prisma Client 生成失败，但继续安装"
+    fi
+    
+    # 运行数据库迁移
+    if npx prisma migrate dev --name init --skip-generate 2>/dev/null || npx prisma migrate dev 2>/dev/null; then
+        log_success "数据库迁移完成"
+    else
+        log_warn "数据库迁移可能已存在或失败，继续安装"
+    fi
+    
+    cd ..
+}
+
+############################################
+# 安装前端依赖
+############################################
+
+install_frontend() {
+    log_step "正在安装前端依赖..."
+    
+    cd frontend
+    
+    # 检查 package.json 是否存在
+    if [ ! -f "package.json" ]; then
+        log_error "未找到 frontend/package.json 文件"
+        exit 1
+    fi
+    
+    # 清理旧依赖（如果存在）
+    if [ -d "node_modules" ]; then
+        log_info "清理旧的 node_modules..."
+        rm -rf node_modules
+    fi
+    
+    # 安装依赖（使用 --legacy-peer-deps 解决依赖冲突）
+    log_info "正在运行 npm install --legacy-peer-deps..."
+    if npm install --legacy-peer-deps; then
+        log_success "前端依赖安装成功"
+    else
+        # 尝试清理缓存后重试
+        log_warn "第一次安装失败，尝试清理缓存后重试..."
+        npm cache clean --force
+        
+        if npm install --legacy-peer-deps; then
+            log_success "前端依赖安装成功（清理缓存后）"
+        else
+            log_error "前端依赖安装失败"
+            exit 1
+        fi
+    fi
+    
+    # 创建 .env 文件
+    if [ ! -f ".env" ]; then
+        cat > .env << EOF
+VITE_API_URL=http://localhost:$BACKEND_PORT/api
+EOF
+        log_success "前端 .env 文件已创建"
+    fi
+    
+    cd ..
+}
+
+############################################
+# 启动服务
+############################################
+
+start_services() {
+    log_step "正在启动服务..."
+    
+    # 创建日志目录
+    mkdir -p logs
+    
+    # 启动后端
+    log_info "启动后端服务..."
+    cd backend
+    nohup npm start > ../logs/backend.log 2>&1 &
+    BACKEND_PID=$!
+    echo $BACKEND_PID > ../logs/backend.pid
+    cd ..
+    log_success "后端服务已启动 (PID: $BACKEND_PID)"
+    
+    # 等待后端启动
+    log_info "等待后端服务启动..."
+    sleep 5
+    
+    # 检查后端是否成功启动
+    if ! kill -0 $BACKEND_PID 2>/dev/null; then
+        log_error "后端服务启动失败，请查看日志: logs/backend.log"
+        cat logs/backend.log
+        return 1
+    fi
+    
+    # 启动前端
+    log_info "启动前端服务..."
+    cd frontend
+    nohup npm run dev > ../logs/frontend.log 2>&1 &
+    FRONTEND_PID=$!
+    echo $FRONTEND_PID > ../logs/frontend.pid
+    cd ..
+    log_success "前端服务已启动 (PID: $FRONTEND_PID)"
+    
+    # 等待前端启动
+    sleep 5
+    
+    log_success "所有服务已启动"
+}
+
+############################################
+# 显示启动信息
+############################################
+
+show_startup_info() {
+    log_step "安装完成！"
+    
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════${NC}"
+    echo -e "${GREEN}  ${PROJECT_NAME} 已成功安装并启动！        ${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════${NC}"
+    echo ""
+    echo -e "📝 前端地址: ${CYAN}http://localhost:$FRONTEND_PORT${NC}"
+    echo -e "🔧 后端地址: ${CYAN}http://localhost:$BACKEND_PORT${NC}"
+    echo ""
+    echo -e "📊 进程信息:"
+    if [ -f "logs/backend.pid" ]; then
+        echo -e "   后端 PID: $(cat logs/backend.pid)"
+    fi
+    if [ -f "logs/frontend.pid" ]; then
+        echo -e "   前端 PID: $(cat logs/frontend.pid)"
+    fi
+    echo ""
+    echo -e "📂 日志文件:"
+    echo -e "   后端日志: ${CYAN}logs/backend.log${NC}"
+    echo -e "   前端日志: ${CYAN}logs/frontend.log${NC}"
+    echo ""
+    echo -e "🛑 停止服务:"
+    echo -e "   ${YELLOW}./stop.sh${NC}  (停止所有服务)"
+    echo ""
+    echo -e "📚 更多信息请查看:"
+    echo -e "   ${CYAN}https://github.com/zlyawa/mio-diary${NC}"
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════${NC}"
+    echo ""
+}
+
+############################################
+# 主函数
+############################################
+
+main() {
+    print_header
+    
+    # 检查是否在项目根目录
+    if [ ! -d "backend" ] || [ ! -d "frontend" ]; then
+        log_error "未检测到项目目录结构"
+        log_info "请确保在 mio-diary 项目根目录下运行此脚本"
+        exit 1
+    fi
+    
+    # 执行安装步骤
+    check_environment
+    check_ports
+    install_backend
+    install_frontend
+    start_services
+    show_startup_info
+}
+
+# 捕获中断信号
+trap 'echo -e "\n${RED}安装被中断${NC}"; exit 1' INT
+
+# 运行主函数
+main
