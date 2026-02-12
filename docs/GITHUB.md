@@ -53,7 +53,7 @@
 - ✅ 响应式设计（完美适配移动端）
 - ✅ 暗黑模式支持
 - ✅ 二次元风格功能展示页
-- ✅ 一键安装脚本（含 JWT 密钥自动生成）
+- ✅ 统一管理脚本（安装/启动/停止/日志一体化）
 
 ## 快速开始
 
@@ -64,21 +64,37 @@
 git clone https://github.com/zlyawa/mio-diary.git
 cd mio-diary
 
-# 运行一键安装脚本
-bash install.sh
+# 安装依赖
+./mio.sh install
+
+# 启动服务并查看日志
+./mio.sh start-log
+```
+
+### 管理命令
+
+```bash
+./mio.sh install       # 安装依赖
+./mio.sh start         # 启动服务
+./mio.sh start-log     # 启动服务并显示日志
+./mio.sh stop          # 停止服务
+./mio.sh restart       # 重启服务
+./mio.sh status        # 查看服务状态
+./mio.sh log           # 查看实时日志
+./mio.sh menu          # 交互式菜单
 ```
 
 ### 手动安装
 
 ```bash
-# 安装后端
+# 后端
 cd backend
 npm install
 npx prisma generate
 npx prisma migrate dev
 npm start
 
-# 安装前端（新终端）
+# 前端（新终端）
 cd frontend
 npm install --legacy-peer-deps
 npm run dev

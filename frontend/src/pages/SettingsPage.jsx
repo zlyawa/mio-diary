@@ -283,9 +283,13 @@ const SettingsPage = () => {
                     onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
+                    minLength={8}
+                    maxLength={100}
+                    pattern="^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?\":{}|<>]).{8,100}$"
+                    title="密码需包含字母、数字和特殊字符，至少8位"
                   />
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    密码需包含字母、数字和特殊字符，至少8位
+                    密码要求：8-100个字符，包含字母、数字和特殊字符
                   </p>
                 </div>
 

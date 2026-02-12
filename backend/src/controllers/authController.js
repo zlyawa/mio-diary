@@ -23,16 +23,38 @@ const validateUsername = (username) => {
 
 const validatePasswordStrength = (password) => {
   const errors = [];
-  if (password.length < 8) errors.push('密码至少需要8个字符');
-  if (password.length > 100) errors.push('密码不能超过100个字符');
-  if (!/[a-zA-Z]/.test(password)) errors.push('密码必须包含字母');
-  if (!/\d/.test(password)) errors.push('密码必须包含数字');
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push('密码必须包含特殊字符');
-  if (/^[a-zA-Z]+$/.test(password)) errors.push('密码不能仅包含字母');
-  if (/^\d+$/.test(password)) errors.push('密码不能仅包含数字');
-  if (password.toLowerCase().includes('password') || password.toLowerCase().includes('123456')) {
+  const PASSWORD_MIN_LENGTH = 8;
+  const PASSWORD_MAX_LENGTH = 100;
+  
+  if (!password || typeof password !== 'string') {
+    errors.push('密码不能为空');
+    return errors;
+  }
+  
+  const trimmedPassword = password.trim();
+  
+  if (trimmedPassword.length < PASSWORD_MIN_LENGTH) {
+    errors.push(`密码至少需要 ${PASSWORD_MIN_LENGTH} 个字符`);
+  }
+  if (trimmedPassword.length > PASSWORD_MAX_LENGTH) {
+    errors.push(`密码不能超过 ${PASSWORD_MAX_LENGTH} 个字符`);
+  }
+  if (!/[a-zA-Z]/.test(trimmedPassword)) {
+    errors.push('密码必须包含至少一个字母');
+  }
+  if (!/\d/.test(trimmedPassword)) {
+    errors.push('密码必须包含至少一个数字');
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(trimmedPassword)) {
+    errors.push('密码必须包含至少一个特殊字符');
+  }
+  
+  // 检查常见弱密码
+  const weakPasswords = ['password', '123456', 'qwerty', 'admin'];
+  if (weakPasswords.some(weak => trimmedPassword.toLowerCase().includes(weak))) {
     errors.push('密码不能包含常见弱密码');
   }
+  
   return errors;
 };
 
@@ -158,6 +180,7 @@ const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
+    console.error(`[注册错误] 用户: ${username}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -240,6 +263,7 @@ const login = async (req, res, next) => {
       },
     });
   } catch (error) {
+    console.error(`[登录错误] 邮箱: ${email}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -406,6 +430,7 @@ const changePassword = async (req, res, next) => {
 
     res.json({ message: '密码修改成功，请重新登录' });
   } catch (error) {
+    console.error(`[修改密码错误] 用户: ${userId}, 错误: ${error.message}`);
     next(error);
   }
 };

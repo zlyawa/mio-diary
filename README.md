@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.6-blue.svg)
 ![Node](https://img.shields.io/badge/node-18%2B-green.svg)
 ![React](https://img.shields.io/badge/react-18.3-blue.svg)
 ![License](https://img.shields.io/badge/license-ISC-orange.svg)
@@ -113,28 +113,43 @@ Mio的日记本是一个现代化的全栈个人日记应用，采用前后端�
 
 ### 一键安装（推荐）
 
-使用一键安装脚本，自动完成依赖安装、JWT 密钥生成和服务启动：
+使用统一管理脚本，自动完成依赖安装、JWT 密钥生成和服务启动：
 
 ```bash
 # 克隆项目
 git clone https://github.com/zlyawa/mio-diary.git
 cd mio-diary
 
-# 运行一键安装脚本
-bash install.sh
+# 运行安装
+./mio.sh install
 
-# 或者直接执行
-./install.sh
+# 启动服务并查看日志
+./mio.sh start-log
 ```
 
 脚本会自动：
 1. 检查 Node.js 版本
-2. 生成安全的 JWT 密钥（如果使用默认值）
+2. 生成安全的 JWT 密钥
 3. 安装后端依赖
 4. 安装前端依赖
-5. 启动服务
+5. 启动服务并显示日志
 
 访问 `http://localhost:5173` 即可使用应用。
+
+### 管理命令
+
+```bash
+./mio.sh install       # 安装依赖
+./mio.sh start         # 启动服务
+./mio.sh start-log     # 启动服务并显示日志（推荐）
+./mio.sh stop          # 停止服务
+./mio.sh restart       # 重启服务
+./mio.sh status        # 查看服务状态
+./mio.sh log           # 查看实时日志
+./mio.sh log-backend   # 查看后端日志（最近50行）
+./mio.sh log-frontend  # 查看前端日志（最近50行）
+./mio.sh menu          # 交互式菜单（默认）
+```
 
 ### 手动安装
 
@@ -320,7 +335,7 @@ mio-diary-project/
 │   ├── CHANGELOG.md            # 更新日志
 │   └── GITHUB.md               # GitHub 发布说明
 ├── screenshots/                # 功能截图
-├── install.sh                  # 一键安装脚本
+├── mio.sh                      # 统一管理脚本（安装/启动/停止/日志）
 └── README.md                   # 项目说明
 ```
 

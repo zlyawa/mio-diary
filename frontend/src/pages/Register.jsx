@@ -56,7 +56,7 @@ const Register = () => {
   const email = watch('email');
 
   /**
-   * 检查密码强度
+   * 检查密码强度（与后端校验规则一致）
    */
   const checkPasswordStrength = (pwd) => {
     if (!pwd) {
@@ -65,11 +65,14 @@ const Register = () => {
     }
 
     let strength = 0;
-    if (pwd.length >= 8) strength++;
-    if (/[A-Z]/.test(pwd)) strength++;
-    if (/[a-z]/.test(pwd)) strength++;
-    if (/[0-9]/.test(pwd)) strength++;
-    if (/[^A-Za-z0-9]/.test(pwd)) strength++;
+    // 基础要求：8-100字符
+    if (pwd.length >= 8 && pwd.length <= 100) strength++;
+    // 包含字母
+    if (/[a-zA-Z]/.test(pwd)) strength++;
+    // 包含数字
+    if (/\d/.test(pwd)) strength++;
+    // 包含特殊字符
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) strength++;
 
     if (strength >= 4) {
       setPasswordStrength(PASSWORD_STRENGTH.STRONG);
@@ -299,11 +302,22 @@ const Register = () => {
                       value: 8,
                       message: '密码至少需要8个字符',
                     },
-                    pattern: {
-                      value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-                      message: '密码必须包含大小写字母、数字和特殊字符',
+                    maxLength: {
+                      value: 100,
+                      message: '密码不能超过100个字符',
                     },
-                  })}
+                    validate: (value) => {
+                      const errors = [];
+                      if (!/[a-zA-Z]/.test(value)) errors.push('至少一个字母');
+                      if (!/\d/.test(value)) errors.push('至少一个数字');
+                      if (!/[!@#$%^&*(),.?":{}|<>]/.test(value)) errors.push('至少一个特殊字符');
+                      const weakPasswords = ['password', '123456', 'qwerty', 'admin'];
+                      if (weakPasswords.some(weak => value.toLowerCase().includes(weak))) {
+                        errors.push('不能包含常见弱密码');
+                      }
+                      return errors.length === 0 || `密码要求: ${errors.join(', ')}`;
+                    },
+                  })} 
                   disabled={isLoading || success}
                   className="w-full pl-10 pr-12 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="请输入密码"
@@ -342,7 +356,7 @@ const Register = () => {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    密码要求：8个字符以上，包含大小写字母、数字和特殊字符
+                    密码要求：8-100个字符，包含字母、数字和特殊字符
                   </p>
                 </div>
               )}

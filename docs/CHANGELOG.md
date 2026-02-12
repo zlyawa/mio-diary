@@ -2,6 +2,60 @@
 
 本文档记录了 Mio 的日记本项目的所有重要变更。
 
+## [1.2.6] - 2026-02-12
+
+### 新增
+- 🚀 全新统一管理脚本 `mio.sh`
+  - 整合原 `install.sh` 和 `stop.sh` 功能
+  - 提供交互式菜单和命令行两种使用方式
+  - 功能包括：
+    - `install` - 安装前后端依赖
+    - `start` - 启动服务
+    - `start-log` - 启动服务并实时显示日志（Ctrl+C 退出日志但保持服务运行）
+    - `stop` - 停止服务
+    - `restart` - 重启服务
+    - `status` - 查看服务状态
+    - `log` - 查看实时日志（前后端合并）
+    - `log-backend` - 查看后端日志（最近50行）
+    - `log-frontend` - 查看前端日志（最近50行）
+  - 使用方式：
+    - 交互式菜单：`./mio.sh` 或 `./mio.sh menu`
+    - 直接命令：`./mio.sh start-log`
+  - 删除旧的 `install.sh` 和 `stop.sh` 文件
+
+### 优化
+- 📝 完善后端错误日志输出
+  - 只保留系统级和数据库级的错误日志
+  - 在以下场景记录错误信息：
+    - 用户注册/登录/密码修改时的数据库错误或异常
+    - 创建/删除日记时的数据库错误或文件操作错误
+    - 服务器启动和运行时的系统错误
+  - 日志格式简洁：`[错误类型] 关键信息, 错误: ${error.message}`
+  - 避免记录敏感信息（如密码）
+  - 修改的文件：
+    - `backend/src/controllers/authController.js`
+    - `backend/src/controllers/diaryController.js`
+
+### 修复
+- 🔧 统一前后端密码校验规则
+  - 问题原因：前端和后端的密码校验规则不一致，前端要求大小写字母，后端只要求字母
+  - 修复方案：
+    1. **统一校验规则**：密码需满足以下条件
+       - 长度：8-100个字符
+       - 必须包含至少一个字母（不区分大小写）
+       - 必须包含至少一个数字
+       - 必须包含至少一个特殊字符 `!@#$%^&*(),.?":{}|<>`
+       - 不能包含常见弱密码（password, 123456, qwerty, admin）
+    2. **后端优化**：`authController.js` 中的 `validatePasswordStrength` 函数与 `validator.js` 保持一致
+    3. **前端优化**：`Register.jsx` 使用自定义 validate 函数替代 pattern 正则，与后端逻辑一致
+    4. **设置页面**：`SettingsPage.jsx` 新密码输入添加相同的校验属性
+  - 修改的文件：
+    - `backend/src/controllers/authController.js`
+    - `frontend/src/pages/Register.jsx`
+    - `frontend/src/pages/SettingsPage.jsx`
+
+---
+
 ## [1.2.5] - 2026-02-11
 
 ### 修复

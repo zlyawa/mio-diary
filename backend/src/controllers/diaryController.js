@@ -106,6 +106,7 @@ const createDiary = async (req, res, next) => {
       diary: resultDiary,
     });
   } catch (error) {
+    console.error(`[创建日记错误] 用户: ${req.user.id}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -359,8 +360,6 @@ const deleteDiary = async (req, res, next) => {
     
     images.forEach((imagePath) => {
       try {
-        // imagePath 格式: /uploads/filename.ext
-        // 提取文件名
         let filename = imagePath;
         if (imagePath.startsWith('/uploads/')) {
           filename = imagePath.substring('/uploads/'.length);
@@ -368,20 +367,19 @@ const deleteDiary = async (req, res, next) => {
           filename = imagePath.substring('uploads/'.length);
         }
         
-        // 构建完整的文件路径
         const fullImagePath = path.join(UPLOADS_DIR, filename);
         
         if (fs.existsSync(fullImagePath)) {
           fs.unlinkSync(fullImagePath);
         }
       } catch (err) {
-        // 图片删除失败不影响整体操作，记录错误即可
-        console.error(`删除图片失败: ${imagePath}`, err);
+        console.error(`[删除图片错误] 路径: ${imagePath}, 错误: ${err.message}`);
       }
     });
 
     res.json({ message: '日记删除成功' });
   } catch (error) {
+    console.error(`[删除日记错误] 用户: ${req.user.id}, 日记: ${id}, 错误: ${error.message}`);
     next(error);
   }
 };
