@@ -180,7 +180,7 @@ const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
-    console.error(`[注册错误] 用户: ${username}, 错误: ${error.message}`);
+    console.error(`[注册错误] 用户: ${sanitizedUsername}, 错误: ${error.message}`);
     next(error);
   }
 };
