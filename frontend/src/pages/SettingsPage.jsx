@@ -285,7 +285,6 @@ const SettingsPage = () => {
                     required
                     minLength={8}
                     maxLength={100}
-                    pattern="^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?\":{}|<>]).{8,100}$"
                     title="密码需包含字母、数字和特殊字符，至少8位"
                   />
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
