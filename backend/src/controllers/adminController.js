@@ -498,6 +498,9 @@ const getSystemConfig = async (req, res, next) => {
         siteDescription: configMap.siteDescription ?? '',
         siteIcon: configMap.siteIcon ?? '',
         siteIco: configMap.siteIco ?? '',
+        loginBg: configMap.loginBg ?? '',
+        registerBg: configMap.registerBg ?? '',
+        forgotPasswordBg: configMap.forgotPasswordBg ?? '',
         enableEmailVerify: configMap.enableEmailVerify ?? false,
         enableUserReview: configMap.enableUserReview ?? false,
         smtp: configMap.smtp ?? {
@@ -520,7 +523,7 @@ const getSystemConfig = async (req, res, next) => {
 // 更新系统配置
 const updateSystemConfig = async (req, res, next) => {
   try {
-    const { siteName, siteDescription, siteIcon, siteIco, enableEmailVerify, enableUserReview, smtp } = req.body;
+    const { siteName, siteDescription, siteIcon, siteIco, loginBg, registerBg, forgotPasswordBg, enableEmailVerify, enableUserReview, smtp } = req.body;
     const adminId = req.user.id;
 
     const updates = [];
@@ -561,6 +564,36 @@ const updateSystemConfig = async (req, res, next) => {
           where: { key: 'siteIco' },
           update: { value: siteIco },
           create: { key: 'siteIco', value: siteIco },
+        })
+      );
+    }
+
+    if (loginBg !== undefined) {
+      updates.push(
+        prisma.systemConfig.upsert({
+          where: { key: 'loginBg' },
+          update: { value: loginBg },
+          create: { key: 'loginBg', value: loginBg },
+        })
+      );
+    }
+
+    if (registerBg !== undefined) {
+      updates.push(
+        prisma.systemConfig.upsert({
+          where: { key: 'registerBg' },
+          update: { value: registerBg },
+          create: { key: 'registerBg', value: registerBg },
+        })
+      );
+    }
+
+    if (forgotPasswordBg !== undefined) {
+      updates.push(
+        prisma.systemConfig.upsert({
+          where: { key: 'forgotPasswordBg' },
+          update: { value: forgotPasswordBg },
+          create: { key: 'forgotPasswordBg', value: forgotPasswordBg },
         })
       );
     }

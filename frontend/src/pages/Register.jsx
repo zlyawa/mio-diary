@@ -24,7 +24,7 @@ const PASSWORD_STRENGTH = {
 const Register = () => {
   const navigate = useNavigate();
   const { register: registerUser, isAuthenticated, loading } = useAuth();
-  const { enableEmailVerify, loading: configLoading } = useConfig();
+  const { enableEmailVerify, registerBg, loading: configLoading } = useConfig();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -283,9 +283,30 @@ const Register = () => {
     setShowConfirmPassword(!showConfirmPassword);
   };
 
+  // 获取背景图URL
+  const getBgUrl = (bg) => {
+    if (!bg) return '';
+    if (bg.startsWith('http')) return bg;
+    // 如果已经是 /uploads/ 开头，直接返回
+    if (bg.startsWith('/uploads/')) return bg;
+    // 否则添加 /uploads/ 前缀
+    return `/uploads/${bg}`;
+  };
+
+  const bgStyle = registerBg ? {
+    backgroundImage: `url(${getBgUrl(registerBg)})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  } : {};
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full">
+    <div className={`min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 ${!registerBg ? 'bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900' : ''}`} style={bgStyle}>
+      {/* 背景遮罩，确保文字可读 */}
+      {registerBg && (
+        <div className="fixed inset-0 bg-black/40 z-0" />
+      )}
+      <div className="max-w-md w-full relative z-10">
         {/* 注册卡片 */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 sm:p-10">
           {/* 头部 */}

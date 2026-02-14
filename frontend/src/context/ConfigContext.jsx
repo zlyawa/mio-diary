@@ -10,6 +10,9 @@ export const ConfigProvider = ({ children }) => {
     siteName: 'Mio日记',
     siteIcon: '',
     siteIco: '',
+    loginBg: '',
+    registerBg: '',
+    forgotPasswordBg: '',
     siteAnnouncement: '',
     loading: true,
     error: null

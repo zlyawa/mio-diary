@@ -30,6 +30,9 @@ const SystemSettings = () => {
     siteDescription: '',
     siteIcon: '',
     siteIco: '',
+    loginBg: '',
+    registerBg: '',
+    forgotPasswordBg: '',
     enableEmailVerify: false,
     enableUserReview: false,
     smtp: {
@@ -283,6 +286,177 @@ const SystemSettings = () => {
                     />
                     <span className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
                       {config.siteIco}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 登录页背景图 */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                登录页背景图
+              </label>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={config.loginBg || ''}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, loginBg: e.target.value }))}
+                    placeholder="输入背景图URL或上传文件"
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+                  />
+                  <label className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg cursor-pointer transition-colors text-gray-700 dark:text-gray-300 whitespace-nowrap text-sm">
+                    <Upload className="w-4 h-4" />
+                    <span>上传</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const formData = new FormData();
+                          formData.append('image', file);
+                          try {
+                            const response = await api.post('/upload/image', formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            setConfig((prev) => ({ ...prev, loginBg: response.data.data.imageUrl }));
+                            setSuccess('背景图上传成功');
+                          } catch (err) {
+                            console.error('上传背景图失败:', err);
+                            setError('上传背景图失败: ' + (err.response?.data?.message || '未知错误'));
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {config.loginBg && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <img 
+                      src={getImageUrl(config.loginBg)} 
+                      alt="登录页背景预览" 
+                      className="w-20 h-12 object-cover rounded flex-shrink-0"
+                      onError={(e) => e.target.style.display = 'none'}
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
+                      {config.loginBg}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 注册页背景图 */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                注册页背景图
+              </label>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={config.registerBg || ''}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, registerBg: e.target.value }))}
+                    placeholder="输入背景图URL或上传文件"
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+                  />
+                  <label className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg cursor-pointer transition-colors text-gray-700 dark:text-gray-300 whitespace-nowrap text-sm">
+                    <Upload className="w-4 h-4" />
+                    <span>上传</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const formData = new FormData();
+                          formData.append('image', file);
+                          try {
+                            const response = await api.post('/upload/image', formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            setConfig((prev) => ({ ...prev, registerBg: response.data.data.imageUrl }));
+                            setSuccess('背景图上传成功');
+                          } catch (err) {
+                            console.error('上传背景图失败:', err);
+                            setError('上传背景图失败: ' + (err.response?.data?.message || '未知错误'));
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {config.registerBg && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <img 
+                      src={getImageUrl(config.registerBg)} 
+                      alt="注册页背景预览" 
+                      className="w-20 h-12 object-cover rounded flex-shrink-0"
+                      onError={(e) => e.target.style.display = 'none'}
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
+                      {config.registerBg}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 忘记密码页背景图 */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                忘记密码页背景图
+              </label>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={config.forgotPasswordBg || ''}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, forgotPasswordBg: e.target.value }))}
+                    placeholder="输入背景图URL或上传文件"
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+                  />
+                  <label className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg cursor-pointer transition-colors text-gray-700 dark:text-gray-300 whitespace-nowrap text-sm">
+                    <Upload className="w-4 h-4" />
+                    <span>上传</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const formData = new FormData();
+                          formData.append('image', file);
+                          try {
+                            const response = await api.post('/upload/image', formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            setConfig((prev) => ({ ...prev, forgotPasswordBg: response.data.data.imageUrl }));
+                            setSuccess('背景图上传成功');
+                          } catch (err) {
+                            console.error('上传背景图失败:', err);
+                            setError('上传背景图失败: ' + (err.response?.data?.message || '未知错误'));
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {config.forgotPasswordBg && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <img 
+                      src={getImageUrl(config.forgotPasswordBg)} 
+                      alt="忘记密码页背景预览" 
+                      className="w-20 h-12 object-cover rounded flex-shrink-0"
+                      onError={(e) => e.target.style.display = 'none'}
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
+                      {config.forgotPasswordBg}
                     </span>
                   </div>
                 )}

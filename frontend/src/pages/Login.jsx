@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useConfig } from '../context/ConfigContext';
 import { Eye, EyeOff, Lock, User, ArrowRight } from 'lucide-react';
 import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -15,11 +16,29 @@ const Login = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated, loading } = useAuth();
   const { isDark } = useTheme();
+  const { loginBg } = useConfig();
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [lockoutTime, setLockoutTime] = useState(null);
+
+  // 获取背景图URL
+  const getBgUrl = (bg) => {
+    if (!bg) return '';
+    if (bg.startsWith('http')) return bg;
+    // 如果已经是 /uploads/ 开头，直接返回
+    if (bg.startsWith('/uploads/')) return bg;
+    // 否则添加 /uploads/ 前缀
+    return `/uploads/${bg}`;
+  };
+
+  const bgStyle = loginBg ? {
+    backgroundImage: `url(${getBgUrl(loginBg)})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  } : {};
 
   /**
    * 已登录用户自动跳转
@@ -179,8 +198,12 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full">
+    <div className={`min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 ${!loginBg ? 'bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900' : ''}`} style={bgStyle}>
+      {/* 背景遮罩，确保文字可读 */}
+      {loginBg && (
+        <div className="fixed inset-0 bg-black/40 z-0" />
+      )}
+      <div className="max-w-md w-full relative z-10">
         {/* 登录卡片 */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 sm:p-10">
           {/* 头部 */}

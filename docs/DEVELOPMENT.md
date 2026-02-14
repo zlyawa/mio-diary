@@ -100,6 +100,10 @@ npx prisma studio        # 可视化管理
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /api/config/public | 公开配置 |
+| GET | /api/config/export | 导出数据库(.sql) |
+| POST | /api/config/import | 导入数据库(.sql/.db) |
+| GET | /api/config/stats | 系统统计信息 |
+| GET | /api/config/version | 版本信息 |
 
 ## 代码规范
 
