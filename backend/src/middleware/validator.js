@@ -9,9 +9,9 @@
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * 用户名验证正则（支持中文、字母、数字、下划线，3-20个字符）
+ * 用户名验证正则（支持中文、字母、数字、下划线，2-16个字符）
  */
-const USERNAME_REGEX = /^[a-zA-Z0-9_一-龥]{3,20}$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,16}$/;
 
 /**
  * 密码强度验证
@@ -81,10 +81,10 @@ const validatePassword = (password) => {
 };
 
 /**
- * 验证用户注册数据
+ * 验证用户注册数据 - 简化版，仅验证email和password
  */
 const validateRegistration = (req, res, next) => {
-  const { email, username, password } = req.body;
+  const { email, password } = req.body;
 
   const errors = [];
 
@@ -93,13 +93,6 @@ const validateRegistration = (req, res, next) => {
     errors.push('邮箱不能为空');
   } else if (!isValidEmail(email)) {
     errors.push('邮箱格式不正确');
-  }
-
-  // 验证用户名
-  if (!username) {
-    errors.push('用户名不能为空');
-  } else if (!isValidUsername(username)) {
-    errors.push('用户名必须是 3-20 个字符，只能包含字母、数字、下划线和中文');
   }
 
   // 验证密码
@@ -124,7 +117,6 @@ const validateRegistration = (req, res, next) => {
 
   // 清理输入数据
   req.body.email = email.trim().toLowerCase();
-  req.body.username = username.trim();
 
   next();
 };
@@ -156,6 +148,36 @@ const validateLogin = (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
   }
+
+  next();
+};
+
+/**
+ * 验证用户名修改
+ */
+const validateUsername = (req, res, next) => {
+  const { username } = req.body;
+
+  const errors = [];
+
+  if (!username) {
+    errors.push('用户名不能为空');
+  } else if (!isValidUsername(username)) {
+    errors.push('用户名必须是 2-16 个字符，只能包含字母、数字、下划线和中文');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'ValidationError',
+      message: '数据验证失败',
+      errors,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // 清理输入数据
+  req.body.username = username.trim();
 
   next();
 };
@@ -352,6 +374,7 @@ module.exports = {
   validatePassword,
   validateRegistration,
   validateLogin,
+  validateUsername,
   validateDiary,
   validateChangePassword,
   validateUpdateProfile,

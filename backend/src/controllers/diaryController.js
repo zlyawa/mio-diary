@@ -1,4 +1,5 @@
 const prisma = require('../config/database');
+const notification = require('../utils/notification');
 
 const MOODS = ['happy', 'sad', 'excited', 'calm', 'anxious', 'angry', 'neutral'];
 
@@ -84,6 +85,16 @@ const createDiary = async (req, res, next) => {
     const cleanedTags = cleanTags(tags);
     const cleanedImages = cleanImages(images);
 
+    // 获取全局审核开关配置
+    const config = await prisma.systemConfig.findUnique({
+      where: { key: 'enableUserReview' },
+    });
+    const enableUserReview = config ? JSON.parse(config.value) : false;
+
+    // 如果全局审核开关开启，日记状态设为pending，否则为approved
+    // 这适用于所有用户，不仅仅是新用户
+    const diaryStatus = enableUserReview ? 'pending' : 'approved';
+
     const diary = await prisma.diary.create({
       data: {
         title: cleanedTitle,
@@ -92,8 +103,40 @@ const createDiary = async (req, res, next) => {
         tags: JSON.stringify(cleanedTags),
         images: JSON.stringify(cleanedImages),
         userId: req.user.id,
+        status: diaryStatus,
       },
     });
+
+    // 如果日记需要审核，通知管理员
+    if (diaryStatus === 'pending') {
+      try {
+        // 查找所有管理员用户
+        const admins = await prisma.user.findMany({
+          where: { role: 'admin' },
+          select: { id: true, username: true }
+        });
+
+        // 获取日记作者信息
+        const author = await prisma.user.findUnique({
+          where: { id: req.user.id },
+          select: { username: true }
+        });
+
+        // 向每个管理员发送审核通知
+        for (const admin of admins) {
+          await notification.notifyUser(
+            admin.id,
+            'diary_review',
+            `新的日记待审核`,
+            `用户 "${author?.username || '未知'}" 提交了一篇日记《${cleanedTitle}》，请尽快审核。`
+          );
+        }
+        console.log(`[日记审核通知] 已向 ${admins.length} 位管理员发送审核通知`);
+      } catch (notifyError) {
+        // 通知失败不影响日记创建成功的结果
+        console.error('[日记审核通知] 发送通知失败:', notifyError);
+      }
+    }
 
     const resultDiary = {
       ...diary,
@@ -102,7 +145,7 @@ const createDiary = async (req, res, next) => {
     };
 
     res.status(201).json({
-      message: '日记创建成功',
+      message: diaryStatus === 'pending' ? '日记已提交，等待审核' : '日记创建成功',
       diary: resultDiary,
     });
   } catch (error) {
@@ -140,6 +183,15 @@ const getDiaries = async (req, res, next) => {
         skip,
         take: limitNum,
         orderBy: { [validSortBy]: validSortOrder },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+            },
+          },
+        },
       }),
       prisma.diary.count({ where }),
     ]);
@@ -148,6 +200,7 @@ const getDiaries = async (req, res, next) => {
       ...diary,
       tags: safeJsonParse(diary.tags),
       images: safeJsonParse(diary.images),
+      author: diary.user,
     }));
 
     res.json({
@@ -185,6 +238,7 @@ const getDiaryById = async (req, res, next) => {
           select: {
             id: true,
             username: true,
+            avatarUrl: true,
             diaryPublic: true,
           },
         },
@@ -201,12 +255,39 @@ const getDiaryById = async (req, res, next) => {
     // 检查权限：如果是自己的日记，或者对方设置了日记公开，则允许访问
     // req.user 可能为 null（未登录用户），需要先判断
     const isOwnDiary = req.user && diary.userId === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
     const isPublicDiary = diary.user.diaryPublic === true;
+    const isApproved = diary.status === 'approved';
 
-    if (!isOwnDiary && !isPublicDiary) {
+    // 待审核日记只有作者和管理员可以访问
+    if (diary.status === 'pending' && !isOwnDiary && !isAdmin) {
+      return res.status(403).json({ 
+        error: 'AuthorizationError',
+        message: '该日记正在审核中，暂不可访问' 
+      });
+    }
+
+    // 已拒绝的日记只有作者和管理员可以访问
+    if (diary.status === 'rejected' && !isOwnDiary && !isAdmin) {
+      return res.status(403).json({ 
+        error: 'AuthorizationError',
+        message: '该日记审核未通过，暂不可访问' 
+      });
+    }
+
+    // 其他情况：私有日记或未审核通过的日记需要权限
+    if (!isOwnDiary && !isAdmin && !isPublicDiary) {
       return res.status(403).json({ 
         error: 'AuthorizationError',
         message: '无权限访问此日记，该用户的日记设置为私密' 
+      });
+    }
+
+    // 非作者和管理员只能看到已审核通过的公开日记
+    if (!isOwnDiary && !isAdmin && !isApproved) {
+      return res.status(403).json({ 
+        error: 'AuthorizationError',
+        message: '无权限访问此日记' 
       });
     }
 
@@ -323,6 +404,8 @@ const updateDiary = async (req, res, next) => {
   }
 };
 
+const { extractImageUrls, deleteFilesByUrl } = require('../utils/fileUtil');
+
 const deleteDiary = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -345,8 +428,8 @@ const deleteDiary = async (req, res, next) => {
       });
     }
 
-    // 获取日记关联的图片列表
-    const images = safeJsonParse(existingDiary.images, []);
+    // 提取所有图片URL（从富文本内容和images字段）
+    const imageUrls = extractImageUrls(existingDiary.content, existingDiary.images);
 
     // 删除数据库记录
     await prisma.diary.delete({
@@ -354,30 +437,17 @@ const deleteDiary = async (req, res, next) => {
     });
 
     // 清理关联的图片文件
-    const fs = require('fs');
-    const path = require('path');
-    const UPLOADS_DIR = path.join(__dirname, '../../uploads');
-    
-    images.forEach((imagePath) => {
-      try {
-        let filename = imagePath;
-        if (imagePath.startsWith('/uploads/')) {
-          filename = imagePath.substring('/uploads/'.length);
-        } else if (imagePath.startsWith('uploads/')) {
-          filename = imagePath.substring('uploads/'.length);
-        }
-        
-        const fullImagePath = path.join(UPLOADS_DIR, filename);
-        
-        if (fs.existsSync(fullImagePath)) {
-          fs.unlinkSync(fullImagePath);
-        }
-      } catch (err) {
-        console.error(`[删除图片错误] 路径: ${imagePath}, 错误: ${err.message}`);
+    if (imageUrls.length > 0) {
+      const result = await deleteFilesByUrl(imageUrls);
+      if (result.failedFiles.length > 0) {
+        console.error('[删除日记] 部分图片删除失败:', result.failedFiles);
       }
-    });
+    }
 
-    res.json({ message: '日记删除成功' });
+    res.json({ 
+      message: '日记删除成功',
+      deletedImages: imageUrls.length 
+    });
   } catch (error) {
     console.error(`[删除日记错误] 用户: ${req.user.id}, 日记: ${id}, 错误: ${error.message}`);
     next(error);

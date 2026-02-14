@@ -1,8 +1,36 @@
-import { lazy, Suspense, Component } from 'react';
+import { lazy, Suspense, Component, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ConfigProvider, useConfig } from './context/ConfigContext';
 import LoadingSpinner from './components/common/LoadingSpinner';
+
+/**
+ * 动态更新网站Favicon
+ */
+const FaviconUpdater = () => {
+  const { siteIco, siteName, loading } = useConfig();
+
+  useEffect(() => {
+    if (loading) return;
+
+    // 更新favicon
+    if (siteIco) {
+      const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/x-icon';
+      link.href = siteIco.startsWith('http') ? siteIco : `/uploads/${siteIco}`;
+      document.head.appendChild(link);
+    }
+
+    // 更新网站标题
+    if (siteName) {
+      document.title = siteName;
+    }
+  }, [siteIco, siteName, loading]);
+
+  return null;
+};
 
 // 错误边界组件
 class ErrorBoundary extends Component {
@@ -59,6 +87,7 @@ class ErrorBoundary extends Component {
 // 懒加载组件，实现代码分割
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Features = lazy(() => import('./pages/Features'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DiaryList = lazy(() => import('./pages/DiaryList'));
@@ -66,7 +95,18 @@ const DiaryDetail = lazy(() => import('./pages/DiaryDetail'));
 const DiaryForm = lazy(() => import('./pages/DiaryForm'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const ProtectedRoute = lazy(() => import('./pages/ProtectedRoute'));
+
+// 管理后台组件
+const AdminRoute = lazy(() => import('./pages/AdminRoute'));
+const AdminLayout = lazy(() => import('./components/layout/AdminLayout'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const DiaryReview = lazy(() => import('./pages/DiaryReview'));
+const AdminDiaryList = lazy(() => import('./pages/AdminDiaryList'));
+const SystemSettings = lazy(() => import('./pages/SystemSettings'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
 
 // 加载组件
 const PageLoader = () => (
@@ -80,16 +120,19 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <Router>
+        <ConfigProvider>
+          <FaviconUpdater />
+          <AuthProvider>
+            <Router>
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* 公开路由 */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/features" element={<Features />} />
 
-                {/* 受保护路由 */}
+                {/* 受保护路由 - 普通用户端 */}
                 <Route
                   path="/"
                   element={
@@ -146,13 +189,84 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/notifications"
+                  element={
+                    <ProtectedRoute>
+                      <NotificationsPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* 管理后台路由 */}
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <AdminDashboard />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <UserManagement />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/reviews"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <DiaryReview />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/diaries"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <AdminDiaryList />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <SystemSettings />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/about"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <AboutPage />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
 
                 {/* 404重定向 */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </Router>
-        </AuthProvider>
+          </AuthProvider>
+        </ConfigProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

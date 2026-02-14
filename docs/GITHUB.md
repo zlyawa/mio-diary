@@ -1,130 +1,57 @@
 # GitHub 发布说明
 
-## 项目信息
+## Mio的日记本 v2.0.0
 
-**Mio的日记本** - 一个功能完整的个人日记应用，支持富文本编辑、图片上传、心情追踪、标签管理、个人主页等功能。
+一个简洁优雅的个人日记管理系统。
 
-## 技术栈
+### 技术栈
 
-### 后端
-- Node.js 18+
-- Express 4.21.2
-- Prisma 6.2.1 ORM
-- SQLite 3 数据库
-- JWT 9.0.2 认证
-- Sharp 0.34.5 图片处理
-- Multer 2.0.0-rc.4 文件上传
+| 层级 | 技术 |
+|------|------|
+| 前端 | React 18 + Vite + Tailwind CSS |
+| 后端 | Node.js + Express + Prisma |
+| 数据库 | SQLite |
+| 认证 | JWT |
 
-### 前端
-- React 18.3.1
-- Vite 6.0.3
-- Tailwind CSS 3.4.17
-- React Router 7.1.1
-- React Quill 2.0.0-beta.4 (富文本编辑)
-- Quill 2.0.3 编辑器核心
-- React Image Crop 11.0.10 图片裁剪
-
-## 功能特性
-
-### 用户功能
-- ✅ 用户注册与登录（JWT 双令牌认证）
-- ✅ 个人主页（公开访问）
-- ✅ 用户资料管理（头像、背景图、个人签名）
-- ✅ 日记可见性设置（公开/私密）
-- ✅ 修改密码
-- ✅ Token 自动刷新
-
-### 日记功能
-- ✅ 日记 CRUD 操作
-- ✅ 富文本编辑器（Quill 2.0.3）
-- ✅ 图片上传（多图片，最大5MB）
-- ✅ 心情追踪（7种预设情绪）
-- ✅ 标签系统（最多10个标签）
-- ✅ 日记搜索与筛选
-- ✅ 自动保存草稿
-
-### 仪表盘
-- ✅ 日记统计（总数、本月新增、本周新增）
-- ✅ 情绪分布统计
-- ✅ 热门标签统计
-- ✅ 最近日记列表
-
-### 系统功能
-- ✅ 响应式设计（完美适配移动端）
-- ✅ 暗黑模式支持
-- ✅ 二次元风格功能展示页
-- ✅ 统一管理脚本（安装/启动/停止/日志一体化）
-
-## 快速开始
-
-### 一键安装（推荐）
+### 快速开始
 
 ```bash
-# 克隆项目
 git clone https://github.com/zlyawa/mio-diary.git
 cd mio-diary
-
-# 安装依赖
 ./mio.sh install
-
-# 启动服务并查看日志
 ./mio.sh start-log
 ```
 
-### 管理命令
+访问 http://localhost:5173
 
-```bash
-./mio.sh install       # 安装依赖
-./mio.sh start         # 启动服务
-./mio.sh start-log     # 启动服务并显示日志
-./mio.sh stop          # 停止服务
-./mio.sh restart       # 重启服务
-./mio.sh status        # 查看服务状态
-./mio.sh log           # 查看实时日志
-./mio.sh menu          # 交互式菜单
-```
+### 功能特性
 
-### 手动安装
+**核心功能**
+- 用户注册/登录
+- 日记增删改查
+- 富文本编辑器
+- 图片上传
+- 情绪追踪
+- 标签分类
+- 个人主页展示
+- 暗黑模式
 
-```bash
-# 后端
-cd backend
-npm install
-npx prisma generate
-npx prisma migrate dev
-npm start
+**管理员后台**
+- 仪表盘统计
+- 用户管理（封禁、重置密码）
+- 日记审核
+- 系统设置
 
-# 前端（新终端）
-cd frontend
-npm install --legacy-peer-deps
-npm run dev
-```
+**通知系统**
+- 站内通知
+- 审核通知
+- 未读角标
 
-## 截图预览
+**系统配置**
+- 网站名称/Logo/Favicon
+- 功能开关（注册验证、内容审核）
+- SMTP邮件配置
 
-![功能展示1](./screenshots/1.jpg)
-![功能展示2](./screenshots/2.jpg)
-![功能展示3](./screenshots/3.jpg)
-![功能展示4](./screenshots/4.jpg)
-![功能展示5](./screenshots/5.jpg)
-![功能展示6](./screenshots/6.jpg)
-
-> **版权声明**：部分预览图中的图片及表情包来源于网络、B站等平台。本项目仅供学习交流使用，所有内容完全公开开源，不用于商业用途。
-
-## 访问地址
-
-- 前端：http://localhost:5173
-- 后端API：http://localhost:3001/api
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-## 许可证
+### 许可证
 
 ISC License
-
-## 联系方式
-
-- GitHub: https://github.com/zlyawa/mio-diary
-- Issues: https://github.com/zlyawa/mio-diary/issues

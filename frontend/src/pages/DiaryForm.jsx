@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { Save, ArrowLeft, Clock, AlertCircle } from 'lucide-react';
 import api from '../utils/api';
+import { useConfig } from '../context/ConfigContext';
 import Header from '../components/layout/Header';
 import QuillEditor from '../components/diary/QuillEditor';
 import MoodSelector from '../components/diary/MoodSelector';
@@ -52,6 +53,7 @@ const DiaryForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = !!id;
+  const { enableReview } = useConfig();
 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -226,6 +228,11 @@ const DiaryForm = () => {
         clearDraft();
       }
 
+      // 根据系统配置决定提示信息和跳转
+      if (!isEditing && enableReview) {
+        alert('日记已提交，等待管理员审核通过后将对外可见');
+      }
+
       navigate(isEditing ? `/diaries/${id}` : '/diaries');
     } catch (err) {
       console.error('保存日记失败:', err);
@@ -296,25 +303,38 @@ const DiaryForm = () => {
   }, [isDirty, content, tags, images]);
 
   /**
-   * 获取字符计数
+   * 获取字符计数（去除HTML标签和多余空白）
    */
   const getCharacterCount = () => {
     if (!content) return 0;
-    // 去除HTML标签，获取纯文本
-    const text = content.replace(/<[^>]*>/g, '');
+    // 去除HTML标签
+    let text = content.replace(/<[^>]*>/g, '');
+    // 将HTML实体转换为空格
+    text = text.replace(/&nbsp;/g, ' ');
+    // 去除多余空白
+    text = text.replace(/\s+/g, ' ').trim();
     return text.length;
   };
 
   /**
-   * 获取字数统计
+   * 获取字数统计（中文按字符统计，英文按单词统计）
    */
   const getWordCount = () => {
     if (!content) return 0;
-    // 去除HTML标签，获取纯文本
-    const text = content.replace(/<[^>]*>/g, '');
-    if (!text.trim()) return 0;
-    // 按空白字符分割，过滤空字符串
-    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+    // 去除HTML标签
+    let text = content.replace(/<[^>]*>/g, '');
+    // 将HTML实体转换为空格
+    text = text.replace(/&nbsp;/g, ' ');
+    // 去除多余空白
+    text = text.replace(/\s+/g, ' ').trim();
+    if (!text) return 0;
+    // 判断是否包含中文
+    if (/[\u4e00-\u9fa5]/.test(text)) {
+      // 包含中文，按字符统计（每个汉字+每个英文单词算一字）
+      return text.replace(/[a-zA-Z]+/g, ' ').split(/\s+/).filter(s => s.length > 0).length;
+    }
+    // 不包含中文，按空格分割统计单词数
+    return text.split(' ').filter(word => word.length > 0).length;
   };
 
   if (isFetching) {
@@ -419,7 +439,6 @@ const DiaryForm = () => {
               />
               {/* 字符统计 */}
               <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                <span>{getWordCount()} 字</span>
                 <span>{getCharacterCount()} 字符</span>
               </div>
             </div>

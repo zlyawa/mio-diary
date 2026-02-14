@@ -17,13 +17,24 @@ model User {
   backgroundUrl String?
   avatarData    String?
   diaryPublic   Boolean        @default(true)
+  // 角色与权限
+  role          String         @default("user") // "user", "admin"
+  // 状态与权限
+  isBanned      Boolean        @default(false)
+  needReview    Boolean        @default(false)
+  emailVerified Boolean        @default(false)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   refreshTokens RefreshToken[]
   diaries       Diary[]
+  notifications Notification[]
+  reviews       Review[]
+  adminLogs     AdminLog[]
 
   @@index([email])
   @@index([username])
+  @@index([role])
+  @@index([isBanned])
 }
 
 model RefreshToken {
@@ -45,13 +56,65 @@ model Diary {
   mood      String   @default("neutral")
   tags      String
   images    String
+  // 审核状态
+  status    String   @default("approved") // "pending", "approved", "rejected"
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  reviews   Review[]
 
   @@index([userId])
   @@index([createdAt])
   @@index([mood])
   @@index([userId, createdAt])
+  @@index([status])
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String   // JSON字符串存储
+  updatedAt DateTime @updatedAt
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  diaryId   String
+  diary     Diary    @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  status    String   @default("pending") // pending, approved, rejected
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([diaryId])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  content   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model AdminLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  action    String
+  details   String?  // JSON字符串存储
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
 }

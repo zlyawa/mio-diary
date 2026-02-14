@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Calendar, Tag, Filter, Grid3X3, List, Trash2, X, ChevronDown } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
 import Skeleton from '../components/common/Skeleton';
 import ErrorMessage from '../components/common/ErrorMessage';
 import api from '../utils/api';
+import { getImageUrl } from '../utils/api';
 
 /**
  * API基础URL（用于API请求）
@@ -233,7 +235,7 @@ const DiaryList = () => {
     return (
       <div
         key={diary.id}
-        className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all cursor-pointer border-2 ${
+        className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 sm:p-6 hover:shadow-lg transition-all cursor-pointer border-2 ${
           isSelected ? 'border-indigo-500' : 'border-transparent'
         }`}
         onClick={(e) => {
@@ -258,18 +260,18 @@ const DiaryList = () => {
 
           {/* 内容 */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="flex items-start justify-between gap-4 mb-3">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
                 {diary.title}
               </h3>
-              <span className={`px-2 py-1 text-xs rounded-full ${getMoodColorClass(diary.mood)}`}>
+              <span className={`px-2.5 py-1 text-xs rounded-full ${getMoodColorClass(diary.mood)}`}>
                 {getMoodLabel(diary.mood)}
               </span>
             </div>
 
-            {/* 日期 */}
-            <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
-              <span className="flex items-center gap-1">
+            {/* 作者和日期 */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
+              <span className="flex items-center gap-1.5">
                 <Calendar size={14} />
                 {new Date(diary.createdAt).toLocaleDateString('zh-CN', {
                   year: 'numeric',
@@ -290,7 +292,7 @@ const DiaryList = () => {
             {/* 内容预览 */}
             <p
               className="text-gray-600 dark:text-gray-300 line-clamp-2 text-sm"
-              dangerouslySetInnerHTML={{ __html: diary.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(diary.content) }}
             />
 
             {/* 标签 */}
@@ -315,18 +317,18 @@ const DiaryList = () => {
 
             {/* 图片预览 */}
             {diary.images && diary.images.length > 0 && (
-              <div className="mt-3 flex gap-2">
+              <div className="mt-4 flex gap-2">
                 {diary.images.slice(0, 4).map((image, index) => (
                   <img
                     key={index}
                     src={`${UPLOAD_BASE_URL}${image}`}
                     alt=""
                     loading="lazy"
-                    className="w-12 h-12 object-cover rounded-lg"
+                    className="w-14 h-14 sm:w-12 sm:h-12 object-cover rounded-lg"
                   />
                 ))}
                 {diary.images.length > 4 && (
-                  <div className="w-12 h-12 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-600 dark:text-gray-400">
+                  <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-600 dark:text-gray-400">
                     +{diary.images.length - 4}
                   </div>
                 )}
@@ -447,9 +449,9 @@ const DiaryList = () => {
         </div>
 
         {/* 搜索和筛选 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 mb-6">
           <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-            <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-col lg:flex-row gap-3 lg:gap-4">
               {/* 搜索框 */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -458,7 +460,7 @@ const DiaryList = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="搜索日记标题或内容..."
-                  className="w-full pl-10 pr-10 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
                 {searchTerm && (
                   <button
@@ -478,7 +480,7 @@ const DiaryList = () => {
                   setMoodFilter(e.target.value);
                   setPage(1);
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 {MOOD_CONFIG.map((mood) => (
                   <option key={mood.value} value={mood.value}>
@@ -494,7 +496,7 @@ const DiaryList = () => {
                   setSortBy(e.target.value);
                   setPage(1);
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 {SORT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -508,7 +510,7 @@ const DiaryList = () => {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
                 >
                   清除筛选
                 </button>
@@ -565,7 +567,7 @@ const DiaryList = () => {
         ) : diaries.length > 0 ? (
           <>
             {/* 日记列表 */}
-            <div className="space-y-4 mb-6">
+            <div className="space-y-4 sm:space-y-5 mb-6">
               {diaries.map(renderListItem)}
             </div>
 

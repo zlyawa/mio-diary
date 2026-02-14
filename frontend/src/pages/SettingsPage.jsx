@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Lock, Calendar, Settings2, Image, ArrowLeft } from 'lucide-react';
 import api, { getImageUrl } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 import AvatarUploader from '../components/profile/AvatarUploader';
@@ -10,7 +11,7 @@ import BackgroundUploader from '../components/profile/BackgroundUploader';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser, logout, updateUser } = useAuth();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,7 +21,10 @@ const SettingsPage = () => {
     diaryPublic: true,
     currentPassword: '',
     newPassword: '',
+    username: '',
   });
+  const [usernameEditing, setUsernameEditing] = useState(false);
+  const [usernameSaving, setUsernameSaving] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -33,7 +37,8 @@ const SettingsPage = () => {
       setFormData(prev => ({ 
         ...prev, 
         bio: response.data.user.bio || '',
-        diaryPublic: response.data.user.diaryPublic !== false 
+        diaryPublic: response.data.user.diaryPublic !== false,
+        username: response.data.user.username || ''
       }));
     } catch (error) {
       setError(error.response?.data?.message || '获取用户信息失败');
@@ -47,6 +52,13 @@ const SettingsPage = () => {
     setError('');
     setSuccessMessage('');
     try {
+      // 如果用户名有变化，先更新用户名
+      if (formData.username !== user?.username) {
+        await api.put('/auth/username', { username: formData.username });
+        // 同步更新 AuthContext 中的用户名
+        updateUser({ username: formData.username });
+      }
+      // 更新其他资料
       await api.put('/profile', { 
         bio: formData.bio,
         diaryPublic: formData.diaryPublic
@@ -87,11 +99,30 @@ const SettingsPage = () => {
     fetchUserData();
   };
 
+  const handleUpdateUsername = async () => {
+    setError('');
+    setSuccessMessage('');
+    setUsernameSaving(true);
+
+    try {
+      await api.put('/auth/username', { username: formData.username });
+      await fetchUserData();
+      setSuccessMessage('用户名修改成功');
+      setUsernameEditing(false);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setError(error.response?.data?.message || '修改失败');
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner size="large" />;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-      <div className="container mx-auto px-4 max-w-4xl">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Header />
+      <div className="container mx-auto px-4 max-w-4xl py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <Settings2 className="w-8 h-8 text-blue-500" />
@@ -154,12 +185,13 @@ const SettingsPage = () => {
                   </label>
                   <input
                     type="text"
-                    value={user?.username}
-                    disabled
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white cursor-not-allowed"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="请输入用户名"
                   />
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    用户名注册后不可修改
+                    用户名必须是2-16个字符，只能包含字母、数字、下划线和中文
                   </p>
                 </div>
 
@@ -196,11 +228,11 @@ const SettingsPage = () => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     日记可见性
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, diaryPublic: true })}
-                      className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                      className={`min-h-[80px] px-4 py-3 rounded-lg border-2 transition-all ${
                         formData.diaryPublic !== false
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'
@@ -214,7 +246,7 @@ const SettingsPage = () => {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, diaryPublic: false })}
-                      className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                      className={`min-h-[80px] px-4 py-3 rounded-lg border-2 transition-all ${
                         formData.diaryPublic === false
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'

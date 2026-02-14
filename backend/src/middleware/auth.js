@@ -94,6 +94,9 @@ const auth = async (req, res, next) => {
         id: true, 
         email: true, 
         username: true,
+        role: true,
+        avatarUrl: true,
+        isBanned: true,
         createdAt: true 
       },
     });
@@ -103,6 +106,15 @@ const auth = async (req, res, next) => {
         error: 'AuthenticationError',
         message: '用户不存在或已被删除',
         code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // 检查用户是否被封禁
+    if (user.isBanned) {
+      return res.status(403).json({
+        error: 'ForbiddenError',
+        message: '您的账户已被封禁，请联系管理员',
+        code: 'ACCOUNT_BANNED'
       });
     }
 
@@ -153,7 +165,9 @@ const optionalAuth = async (req, res, next) => {
       select: { 
         id: true, 
         email: true, 
-        username: true 
+        username: true,
+        role: true,
+        avatarUrl: true,
       },
     });
 
@@ -165,9 +179,39 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+// 管理员权限检查
+const adminOnly = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'AuthenticationError',
+        message: '未登录',
+        code: 'NO_AUTH'
+      });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'ForbiddenError',
+        message: '需要管理员权限',
+        code: 'ADMIN_REQUIRED'
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('权限检查错误:', error.message);
+    return res.status(500).json({
+      error: 'ServerError',
+      message: '权限检查失败',
+    });
+  }
+};
+
 module.exports = { 
   auth, 
   optionalAuth,
+  adminOnly,
   blacklistToken,
   isTokenBlacklisted
 };

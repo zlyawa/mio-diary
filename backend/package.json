@@ -1,6 +1,6 @@
 {
     "name": "backend",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Mio的日记本 - 后端API",
     "main": "src/server.js",
     "scripts": {
@@ -23,7 +23,9 @@
         "express": "^4.21.2",
         "jsonwebtoken": "^9.0.2",
         "multer": "^2.0.0-rc.4",
+        "nodemailer": "^8.0.1",
         "prisma": "^6.2.1",
-        "sharp": "^0.34.5"
+        "sharp": "^0.34.5",
+        "svg-captcha": "^1.4.0"
     }
 }

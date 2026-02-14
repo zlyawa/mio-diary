@@ -11,6 +11,8 @@ backend/dist/
 # Environment variables
 .env.local
 .env.*.local
+backend/.env
+frontend/.env
 
 # Database
 backend/prisma/dev.db
@@ -21,6 +23,7 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 
 # Logs
+logs/
 *.log
 log.txt
 warn.txt
@@ -42,6 +45,15 @@ Thumbs.db
 
 # Test files
 test-*.js
+frontend/tests/
+frontend/test-results/
+frontend/playwright.config.js
+security_test*.py
+security_test.sh
+security_test_report.md
+test_*.sh
+test_*.py
+test.txt
 
 # Fixed version
 mio-diary-project-fixed.tar.gz

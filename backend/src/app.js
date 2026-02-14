@@ -8,6 +8,9 @@ const authRoutes = require('./routes/auth');
 const diaryRoutes = require('./routes/diaries');
 const uploadRoutes = require('./routes/upload');
 const profileRoutes = require('./routes/profile');
+const adminRoutes = require('./routes/admin');
+const configRoutes = require('./routes/config');
+const notificationRoutes = require('./routes/notifications');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -29,7 +32,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-request-id', 'X-Request-ID'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range', 'X-Captcha-Id'],
   maxAge: 86400,
   optionsSuccessStatus: 204
 }));
@@ -145,12 +148,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api/diaries', diaryRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Mio的日记本 API运行正常',
-    version: '1.0.0',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -159,13 +165,15 @@ app.get('/api/health', (req, res) => {
 app.get('/api', (req, res) => {
   res.json({
     name: 'Mio的日记本 API',
-    version: '1.0.0',
+    version: '2.0.0',
     description: '个人日记网站后端API',
     endpoints: {
       auth: '/api/auth',
       diaries: '/api/diaries',
       upload: '/api/upload',
       profile: '/api/profile',
+      admin: '/api/admin',
+      config: '/api/config',
       health: '/api/health'
     },
     documentation: 'https://github.com/mio-diary/docs',

@@ -2,14 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Edit, Trash2, ArrowLeft, Calendar, Tag, Image as ImageIcon, 
-  Printer, Share2, X, ZoomIn, ChevronLeft, ChevronRight, Lock 
+  Printer, Share2, X, ZoomIn, ChevronLeft, ChevronRight, Lock,
+  Clock, AlertCircle
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
 import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Skeleton from '../components/common/Skeleton';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { getImageUrl } from '../utils/api';
 
 /**
  * API基础URL（用于API请求）
@@ -38,6 +41,15 @@ const MOOD_CONFIG = {
 };
 
 /**
+ * 日记状态配置
+ */
+const STATUS_CONFIG = {
+  pending: { label: '待审核', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300', icon: Clock },
+  approved: { label: '已通过', color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', icon: null },
+  rejected: { label: '已拒绝', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: AlertCircle },
+};
+
+/**
  * 日记详情页面组件
  * 展示日记的完整内容、图片、标签等信息
  */
@@ -56,6 +68,17 @@ const DiaryDetail = () => {
    * 判断是否为日记所有者
    */
   const isOwnDiary = user && diary && diary.userId === user.id;
+
+  /**
+   * 判断是否为管理员
+   */
+  const isAdmin = user && user.role === 'admin';
+
+  /**
+   * 判断是否需要显示审核状态
+   * 只对自己的日记且状态为pending时显示
+   */
+  const showReviewStatus = diary && (diary.status === 'pending' || diary.status === 'rejected');
 
   /**
    * 获取日记详情
@@ -85,7 +108,12 @@ const DiaryDetail = () => {
 
     setIsDeleting(true);
     try {
-      await api.delete(`/diaries/${id}`);
+      // 管理员使用管理员 API 删除，普通用户使用普通 API
+      if (isAdmin) {
+        await api.delete(`/admin/diaries/${id}`);
+      } else {
+        await api.delete(`/diaries/${id}`);
+      }
       navigate('/diaries');
     } catch (err) {
       console.error('删除日记失败:', err);
@@ -302,43 +330,96 @@ const DiaryDetail = () => {
 
         {/* 日记卡片 */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+          {/* 待审核状态提示 - 仅显示在日记卡片上方 */}
+          {showReviewStatus && (
+            <div className={`px-4 sm:px-6 py-3 border-b ${diary.status === 'pending' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
+              <div className="flex items-center gap-2">
+                {diary.status === 'pending' ? (
+                  <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                )}
+                <span className={`font-medium ${diary.status === 'pending' ? 'text-yellow-800 dark:text-yellow-200' : 'text-red-800 dark:text-red-200'}`}>
+                  {diary.status === 'pending' ? '该日记正在审核中，审核通过后其他用户才能看到' : '该日记审核未通过，请修改后重新提交'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* 头部 */}
-          <div className="p-6 sm:p-8 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-start justify-between mb-6">
+          <div className="p-4 sm:p-6 lg:p-8 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
               <div className="flex-1">
                 {/* 标题 */}
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">
                   {diary.title}
                 </h1>
 
-                {/* 元信息 */}
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700">
-                    <Calendar size={16} />
-                    {new Date(diary.createdAt).toLocaleDateString('zh-CN', {
+                {/* 作者信息 */}
+                {diary.user && (
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <button
+                      onClick={() => navigate(`/profile/${diary.user.username}`)}
+                      className="flex items-center gap-2 group"
+                    >
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center overflow-hidden group-hover:ring-2 group-hover:ring-indigo-500 transition-all">
+                        {diary.user.avatarUrl ? (
+                          <img
+                            src={getImageUrl(diary.user.avatarUrl)}
+                            alt={diary.user.username}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xs sm:text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                            {diary.user.username.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        {diary.user.username}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* 元信息 - 优化手机端布局 */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                  <span className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700">
+                    <Calendar size={14} className="sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">{new Date(diary.createdAt).toLocaleDateString('zh-CN', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit',
-                    })}
+                    })}</span>
+                    <span className="sm:hidden">{new Date(diary.createdAt).toLocaleDateString('zh-CN', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}</span>
                   </span>
-                  <span className="text-2xl">{moodConfig.emoji}</span>
-                  <span className={`px-3 py-1.5 rounded-full ${moodConfig.color}`}>
+                  <span className="text-lg sm:text-2xl">{moodConfig.emoji}</span>
+                  <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs ${moodConfig.color}`}>
                     {moodConfig.label}
                   </span>
+                  {/* 审核状态标签 */}
+                  {showReviewStatus && (
+                    <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium ${STATUS_CONFIG[diary.status].color}`}>
+                      {STATUS_CONFIG[diary.status].label}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* 操作按钮 */}
-              <div className="flex gap-2 ml-4">
+              {/* 操作按钮 - 优化手机端布局 */}
+              <div className="flex gap-2 sm:ml-4 self-start">
                 {isOwnDiary && (
                   <button
                     onClick={() => navigate(`/diaries/${id}/edit`)}
                     className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 transition-colors"
                     title="编辑"
                   >
-                    <Edit size={20} />
+                    <Edit size={18} className="sm:w-5 sm:h-5" />
                   </button>
                 )}
                 <button
@@ -346,23 +427,23 @@ const DiaryDetail = () => {
                   className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors"
                   title="打印"
                 >
-                  <Printer size={20} />
+                  <Printer size={18} className="sm:w-5 sm:h-5" />
                 </button>
                 <button
                   onClick={handleShare}
                   className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors"
                   title="分享"
                 >
-                  <Share2 size={20} />
+                  <Share2 size={18} className="sm:w-5 sm:h-5" />
                 </button>
-                {isOwnDiary && (
+                {(isOwnDiary || isAdmin) && (
                   <button
                     onClick={handleDelete}
                     disabled={isDeleting}
                     className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="删除"
                   >
-                    <Trash2 size={20} />
+                    <Trash2 size={18} className="sm:w-5 sm:h-5" />
                   </button>
                 )}
               </div>
@@ -370,24 +451,24 @@ const DiaryDetail = () => {
           </div>
 
           {/* 内容 */}
-          <div className="p-6 sm:p-8">
+          <div className="p-4 sm:p-6 lg:p-8">
             {/* 正文 */}
-            <div className="prose prose-lg dark:prose-invert max-w-none mb-8">
+            <div className="prose prose-sm sm:prose-lg dark:prose-invert max-w-none mb-6 sm:mb-8">
               <div
-                dangerouslySetInnerHTML={{ __html: diary.content }}
-                className="text-gray-700 dark:text-gray-300 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(diary.content) }}
+                className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm sm:text-base"
               />
             </div>
 
             {/* 标签 */}
             {diary.tags && diary.tags.length > 0 && (
-              <div className="flex items-center gap-2 mb-8">
-                <Tag size={18} className="text-gray-400" />
-                <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 mb-6 sm:mb-8">
+                <Tag size={16} className="text-gray-400 sm:w-[18px] sm:h-[18px]" />
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {diary.tags.map((tag, index) => (
                     <span
                       key={index}
-                      className="px-3 py-1.5 text-sm rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                      className="px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
                     >
                       {tag}
                     </span>
@@ -398,14 +479,14 @@ const DiaryDetail = () => {
 
             {/* 图片 */}
             {diary.images && diary.images.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <ImageIcon size={18} className="text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div className="mb-6 sm:mb-8">
+                <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                  <ImageIcon size={16} className="text-gray-400 sm:w-[18px] sm:h-[18px]" />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
                     图片 ({diary.images.length})
                   </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
                   {diary.images.map((image, index) => (
                     <div
                       key={index}
@@ -416,10 +497,10 @@ const DiaryDetail = () => {
                         src={`${UPLOAD_BASE_URL}${image}`}
                         alt={`图片 ${index + 1}`}
                         loading="lazy"
-                        className="w-full h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-700 transition-transform group-hover:scale-[1.02]"
+                        className="w-full h-32 sm:h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-700 transition-transform group-hover:scale-[1.02]"
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <ZoomIn className="w-8 h-8 text-white" />
+                        <ZoomIn className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       </div>
                     </div>
                   ))}
@@ -428,7 +509,7 @@ const DiaryDetail = () => {
             )}
 
             {/* 更新时间 */}
-            <div className="text-sm text-gray-500 dark:text-gray-400 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-700">
               最后更新: {new Date(diary.updatedAt).toLocaleDateString('zh-CN', {
                 year: 'numeric',
                 month: 'long',

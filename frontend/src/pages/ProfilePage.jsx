@@ -172,7 +172,7 @@ const ProfilePage = () => {
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 sm:gap-6 space-y-4 sm:space-y-6">
               {profile.diaries.map((diary) => {
                 const images = parseImages(diary.images);
                 const firstImage = images[0];
@@ -183,7 +183,7 @@ const ProfilePage = () => {
                     to={`/diaries/${diary.id}`}
                     className="block group"
                   >
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden break-inside-avoid">
                       {/* 图片缩略图 */}
                       {firstImage && (
                         <div className="h-36 sm:h-40 overflow-hidden bg-gray-100 dark:bg-gray-700">

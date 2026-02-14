@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../context/AuthContext';
-import { Eye, EyeOff, Mail, User, Lock, Check, X, UserPlus } from 'lucide-react';
+import { useConfig } from '../context/ConfigContext';
+import { Eye, EyeOff, Mail, Lock, Check, UserPlus, Sparkles, RefreshCw, Send } from 'lucide-react';
 import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import api from '../utils/api';
 
 /**
  * 密码强度等级
@@ -17,43 +19,132 @@ const PASSWORD_STRENGTH = {
 
 /**
  * 注册页面组件
- * 提供用户注册功能，包含邮箱、用户名、密码等字段验证
+ * 简化版：仅需要邮箱和密码，用户名自动生成
  */
 const Register = () => {
   const navigate = useNavigate();
   const { register: registerUser, isAuthenticated, loading } = useAuth();
+  const { enableEmailVerify, loading: configLoading } = useConfig();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(PASSWORD_STRENGTH.WEAK);
-  const [usernameAvailable, setUsernameAvailable] = useState(null);
-  const [emailAvailable, setEmailAvailable] = useState(null);
+  
+  // 图片验证码相关
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaSvg, setCaptchaSvg] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  
+  // 邮箱验证码相关
+  const [emailCode, setEmailCode] = useState('');
+  const [sendCodeLoading, setSendCodeLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [emailForCode, setEmailForCode] = useState('');
 
   /**
-   * 已登录用户自动跳转到总览页
+   * 注册成功后不需要自动跳转
+   * 注册成功后会显示成功提示，用户可以手动点击登录
    */
   useEffect(() => {
-    if (isAuthenticated && !loading) {
-      navigate('/');
-    }
+    // 不再自动跳转，避免与手动跳转冲突
   }, [isAuthenticated, loading, navigate]);
+
+  /**
+   * 获取图片验证码
+   */
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    try {
+      const response = await api.get('/auth/captcha', {
+        responseType: 'text',
+      });
+      // 从响应头获取 captchaId
+      const id = response.headers['x-captcha-id'];
+      console.log('[验证码] 响应头:', response.headers);
+      console.log('[验证码] captchaId:', id);
+      setCaptchaId(id);
+      setCaptchaSvg(response.data);
+    } catch (err) {
+      console.error('获取验证码失败:', err);
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  /**
+   * 页面加载时获取验证码
+   */
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
+
+  /**
+   * 发送邮箱验证码
+   */
+  const sendEmailCode = async () => {
+    const email = watch('email');
+    if (!email) {
+      setError('请先输入邮箱');
+      return;
+    }
+
+    const captchaInput = watch('captchaInput');
+    if (!captchaInput) {
+      setError('请先输入图片验证码');
+      return;
+    }
+
+    setSendCodeLoading(true);
+    setError('');
+    try {
+      const response = await api.post('/auth/send-verification-code', { 
+        email,
+        captchaId,
+        captchaInput 
+      });
+      setEmailForCode(email);
+      setCountdown(60);
+      
+      // 更新图片验证码（后端返回了新的验证码）
+      if (response.data.newCaptcha) {
+        setCaptchaId(response.data.newCaptcha.id);
+        setCaptchaSvg(response.data.newCaptcha.svg);
+        // 清空之前输入的图片验证码
+        setValue('captchaInput', '');
+      }
+      
+      // 开始倒计时
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.message || '发送验证码失败');
+      fetchCaptcha(); // 刷新验证码
+    } finally {
+      setSendCodeLoading(false);
+    }
+  };
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
-    trigger,
   } = useForm({
     mode: 'onChange',
   });
 
   const password = watch('password');
   const confirmPassword = watch('confirmPassword');
-  const username = watch('username');
-  const email = watch('email');
 
   /**
    * 检查密码强度（与后端校验规则一致）
@@ -127,11 +218,32 @@ const Register = () => {
    */
   const onSubmit = async (data) => {
     setError('');
+    
+    // 验证图片验证码
+    if (!data.captchaInput) {
+      setError('请输入图片验证码');
+      return;
+    }
+
+    // 如果启用了邮箱验证，检查邮箱验证码
+    if (enableEmailVerify && !emailCode) {
+      setError('请输入邮箱验证码');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      console.log('[注册] 开始注册流程，数据:', JSON.stringify({ ...data, password: '***' }));
-      await registerUser(data);
+      console.log('[注册] 开始注册流程，数据:', JSON.stringify({ email: data.email, password: '***' }));
+      console.log('[注册] captchaId:', captchaId, 'captchaInput:', data.captchaInput);
+      // 传递完整数据，包括验证码
+      await registerUser({
+        email: data.email,
+        password: data.password,
+        captchaId: captchaId,
+        captchaInput: data.captchaInput,
+        verificationCode: enableEmailVerify ? emailCode : undefined,
+      });
       console.log('[注册] 注册成功');
       setSuccess(true);
       // 3秒后跳转到登录页
@@ -150,6 +262,8 @@ const Register = () => {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || '注册失败，请重试';
       const debugInfo = import.meta.env.DEV ? ` (状态码: ${err.response?.status || '未知'})` : '';
       setError(errorMessage + debugInfo);
+      // 刷新验证码
+      fetchCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -200,6 +314,16 @@ const Register = () => {
             </div>
           )}
 
+          {/* 提示信息 */}
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-blue-800 dark:text-blue-200 text-sm flex items-start gap-2">
+              <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                注册更简单啦！只需邮箱和密码，我们会为您自动生成一个可爱的用户名，之后可以在设置中修改。
+              </span>
+            </p>
+          </div>
+
           {/* 注册表单 */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* 邮箱输入 */}
@@ -237,48 +361,99 @@ const Register = () => {
               )}
             </div>
 
-            {/* 用户名输入 */}
+            {/* 图片验证码 */}
             <div>
               <label
-                htmlFor="username"
+                htmlFor="captchaInput"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
               >
-                用户名
+                图片验证码
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
-                </div>
+              <div className="flex gap-2 sm:gap-3 items-start">
                 <input
-                  id="username"
+                  id="captchaInput"
                   type="text"
-                  autoComplete="username"
-                  {...register('username', {
-                    required: '请输入用户名',
-                    minLength: {
-                      value: 3,
-                      message: '用户名至少需要3个字符',
-                    },
-                    maxLength: {
-                      value: 20,
-                      message: '用户名最多20个字符',
-                    },
-                    pattern: {
-                      value: /^[a-zA-Z0-9_]+$/,
-                      message: '用户名只能包含字母、数字和下划线',
-                    },
+                  {...register('captchaInput', {
+                    required: '请输入验证码',
+                    minLength: { value: 4, message: '验证码为4位' },
+                    maxLength: { value: 4, message: '验证码为4位' },
                   })}
                   disabled={isLoading || success}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="请输入用户名"
+                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="请输入验证码"
+                  maxLength={4}
                 />
+                <div 
+                  className="w-24 sm:w-28 h-12 flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer overflow-hidden flex-shrink-0"
+                  onClick={fetchCaptcha}
+                  title="点击刷新验证码"
+                >
+                  {captchaLoading ? (
+                    <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                  ) : captchaSvg ? (
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: captchaSvg }} 
+                      className="w-full h-full flex items-center justify-center [&_svg]:max-w-full [&_svg]:max-h-full [&_svg]:w-auto [&_svg]:h-auto" 
+                    />
+                  ) : (
+                    <RefreshCw className="w-5 h-5 text-gray-400" />
+                  )}
+                </div>
               </div>
-              {errors.username && (
+              {errors.captchaInput && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {errors.username.message}
+                  {errors.captchaInput.message}
                 </p>
               )}
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                点击图片可刷新验证码
+              </p>
             </div>
+
+            {/* 邮箱验证码（仅在启用邮箱验证时显示） */}
+            {enableEmailVerify && (
+              <div>
+                <label
+                  htmlFor="emailCode"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
+                  邮箱验证码
+                </label>
+                <div className="flex gap-2 sm:gap-3">
+                  <input
+                    id="emailCode"
+                    type="text"
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value)}
+                    disabled={isLoading || success}
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="请输入邮箱验证码"
+                    maxLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={sendEmailCode}
+                    disabled={countdown > 0 || sendCodeLoading || isLoading || success}
+                    className="px-3 sm:px-4 py-3 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 whitespace-nowrap text-sm sm:text-base flex-shrink-0"
+                  >
+                    {sendCodeLoading ? (
+                      <LoadingSpinner size="sm" />
+                    ) : countdown > 0 ? (
+                      `${countdown}s`
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span className="hidden sm:inline">发送</span>
+                        <span className="sm:hidden">发送</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  验证码将发送到您的邮箱
+                </p>
+              </div>
+            )}
 
             {/* 密码输入 */}
             <div>

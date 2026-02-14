@@ -22,13 +22,16 @@ const Login = () => {
   const [lockoutTime, setLockoutTime] = useState(null);
 
   /**
-   * 已登录用户自动跳转到总览页
+   * 已登录用户自动跳转
+   * 只在页面初次加载时检查，避免重复跳转
    */
   useEffect(() => {
+    // 如果已经在登录页面且已登录，跳转到首页或管理员页面
     if (isAuthenticated && !loading) {
-      navigate('/');
+      // 登录成功后会手动跳转，这里不需要自动跳转
+      // 避免与登录成功后的跳转冲突
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, loading]);
 
   const {
     register,
@@ -107,8 +110,8 @@ const Login = () => {
     console.log('[登录] 开始登录流程，数据:', JSON.stringify({ ...data, password: '***' }));
 
     try {
-      await login(data);
-      console.log('[登录] 登录成功');
+      const result = await login(data);
+      console.log('[登录] 登录成功', result);
       
       // 登录成功，清除尝试次数和锁定信息
       localStorage.removeItem('loginAttempts');
@@ -123,7 +126,12 @@ const Login = () => {
         localStorage.removeItem('rememberMe');
       }
       
-      navigate('/');
+      // 根据角色分流：管理员跳转到/admin，普通用户跳转到/
+      if (result.user?.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       console.error('[登录] 登录失败:', err);
       console.error('[登录] 错误详情:', {

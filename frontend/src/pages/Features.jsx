@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
+import Header from '../components/layout/Header';
 import { 
   PenTool, 
   Shield, 
@@ -181,6 +182,9 @@ const Features = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20">
+      {/* 导航栏 */}
+      <Header />
+      
       {/* 页面头部 */}
       <section className="relative overflow-hidden min-h-[600px]">
         {/* 背景图片 */}
