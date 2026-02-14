@@ -14,7 +14,7 @@ const upload = multer({
 
 // 版本信息常量
 const VERSION_INFO = {
-  version: '2.0.1',
+  version: '2.0.2',
   name: 'Mio的日记本',
   description: '个人日记管理系统',
   author: 'Mio',

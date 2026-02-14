@@ -147,7 +147,7 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Mio的日记本 API运行正常',
-    version: '2.0.1',
+    version: '2.0.2',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });

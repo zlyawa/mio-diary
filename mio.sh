@@ -9,7 +9,7 @@
 set -e
 
 # ==================== 配置 ====================
-PROJECT_VERSION="2.0.1"
+PROJECT_VERSION="2.0.2"
 BACKEND_PORT=3001
 FRONTEND_PORT=5173
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

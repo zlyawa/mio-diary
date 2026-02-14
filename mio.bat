@@ -9,7 +9,7 @@ REM GitHub: https://github.com/zlyawa/mio-diary
 REM ===========================================
 
 REM ==================== 配置 ====================
-set PROJECT_VERSION=2.0.1
+set PROJECT_VERSION=2.0.2
 set BACKEND_PORT=3001
 set FRONTEND_PORT=5173
 set SCRIPT_DIR=%~dp0

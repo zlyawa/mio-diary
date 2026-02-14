@@ -152,12 +152,15 @@ const NotificationsPage = () => {
   };
 
   const handleNotificationClick = async (notification) => {
-    // 如果是待审核通知，跳转到审核页面
+    // 如果是待审核通知，先标记已读，再跳转到审核页面
     if (notification.type === 'diary_review') {
-      navigate('/admin/diary-review');
+      if (!notification.isRead) {
+        await handleMarkAsRead(notification.id);
+      }
+      navigate('/admin/reviews');
       return;
     }
-    // 如果未读，先标记已读
+    // 其他通知：如果未读，先标记已读
     if (!notification.isRead) {
       await handleMarkAsRead(notification.id);
     }

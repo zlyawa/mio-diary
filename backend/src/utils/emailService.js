@@ -85,7 +85,7 @@ const emailTemplates = {
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
         <p style="color: #6b7280; font-size: 12px;">
           发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.1
+          系统: Mio日记系统 v2.0.2
         </p>
       </div>
     `,
@@ -110,7 +110,7 @@ const emailTemplates = {
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
         <p style="color: #6b7280; font-size: 12px;">
           发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.1
+          系统: Mio日记系统 v2.0.2
         </p>
       </div>
     `,
@@ -135,7 +135,7 @@ const emailTemplates = {
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
         <p style="color: #6b7280; font-size: 12px;">
           发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.1
+          系统: Mio日记系统 v2.0.2
         </p>
       </div>
     `,
@@ -162,7 +162,7 @@ const emailTemplates = {
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
         <p style="color: #6b7280; font-size: 12px;">
           发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.1
+          系统: Mio日记系统 v2.0.2
         </p>
       </div>
     `,
@@ -191,7 +191,7 @@ const emailTemplates = {
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
         <p style="color: #6b7280; font-size: 12px;">
           发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.1
+          系统: Mio日记系统 v2.0.2
         </p>
       </div>
     `,
