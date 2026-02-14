@@ -622,11 +622,17 @@ const register = async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // 检查是否为第一个用户（第一个用户设为管理员）
+    const userCount = await prisma.user.count();
+    const isFirstUser = userCount === 0;
+    const userRole = isFirstUser ? 'admin' : 'user';
+
     const user = await prisma.user.create({
       data: {
         email: sanitizedEmail,
         username: defaultUsername,
         password: hashedPassword,
+        role: userRole,
         emailVerified: config.enableEmailVerify, // 如果启用了邮箱验证，则标记为已验证
         needReview: config.enableUserReview || false, // 如果启用了用户审核，则标记需要审核
       },
@@ -639,8 +645,13 @@ const register = async (req, res, next) => {
       },
     });
 
+    // 如果是第一个用户，打印日志提示
+    if (isFirstUser) {
+      console.log(`[系统] 首次用户注册: ${email}, 已设置为管理员`);
+    }
+
     res.status(201).json({
-      message: '注册成功',
+      message: isFirstUser ? '注册成功，您是系统管理员' : '注册成功',
       user,
     });
   } catch (error) {

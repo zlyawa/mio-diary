@@ -16,19 +16,10 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 
 const isProduction = process.env.NODE_ENV === 'production';
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(url => url.trim());
 
+// CORS 配置
 app.use(cors({
-  origin: (origin, callback) => {
-    // 开发环境允许所有 localhost 端口
-    if (!isProduction && (!origin || origin.startsWith('http://localhost'))) {
-      callback(null, true);
-    } else if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`不允许的源: ${origin}`));
-    }
-  },
+  origin: true, // 允许所有来源，方便部署
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-request-id', 'X-Request-ID'],
