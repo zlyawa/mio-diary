@@ -43,7 +43,7 @@ const extractImageUrls = (htmlContent, imageField) => {
  * @returns {Promise<{deletedFiles: string[], failedFiles: Array}>}
  */
 const deleteFilesByUrl = async (fileUrls) => {
-  const uploadDir = path.join(__dirname, '../../uploads');
+  const uploadDir = path.resolve(path.join(__dirname, '../../uploads'));
   const deletedFiles = [];
   const failedFiles = [];
   
@@ -52,7 +52,22 @@ const deleteFilesByUrl = async (fileUrls) => {
       // 转换URL为物理路径
       // URL格式可能是: /uploads/xxx.jpg 或 http://localhost:3001/uploads/xxx.jpg
       const relativePath = url.replace(/^.*:\/\/[^/]+/, '').replace(/^\//, '');
-      const filePath = path.join(uploadDir, '..', relativePath);
+      const filePath = path.resolve(path.join(uploadDir, '..', relativePath));
+      
+      // 安全检查：确保文件路径在上传目录内，防止路径遍历攻击
+      if (!filePath.startsWith(uploadDir) && !filePath.startsWith(path.resolve(path.join(uploadDir, '..')))) {
+        console.error(`[文件清理] 安全警告: 尝试访问上传目录外的文件: ${url}`);
+        failedFiles.push({ url, error: '非法文件路径' });
+        continue;
+      }
+      
+      // 确保不是目录
+      const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) {
+        console.error(`[文件清理] 跳过目录: ${url}`);
+        failedFiles.push({ url, error: '不能删除目录' });
+        continue;
+      }
       
       await fs.unlink(filePath);
       deletedFiles.push(filePath);

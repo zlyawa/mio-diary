@@ -1,25 +1,19 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/database');
-const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const { generateAccessToken, generateRefreshToken, verifyRefreshToken, getTimeUntilExpiration } = require('../utils/jwt');
 const { sendEmail, generateVerificationCode, getEmailConfig } = require('../utils/emailService');
 const svgCaptcha = require('svg-captcha');
+const cacheService = require('../services/cacheService');
+const rateLimiter = require('../services/rateLimiter');
+const { blacklistToken, clearUserSessionCache } = require('../middleware/auth');
 
-const loginAttempts = new Map();
+// 配置常量
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000;
-
-// 验证码存储（内存存储，生产环境建议使用Redis）
-const verificationCodes = new Map();
-const CODE_EXPIRY = 30 * 60 * 1000; // 30分钟过期
-
-// 图片验证码存储
-const imageCaptchaCodes = new Map();
-const CAPTCHA_EXPIRY = 5 * 60 * 1000; // 5分钟过期
-
-// 验证码发送频率限制（防止滥用）
-const codeSendAttempts = new Map();
+const LOCKOUT_DURATION = 15 * 60; // 15分钟（秒）
+const CODE_EXPIRY = 30 * 60; // 30分钟（秒）
+const CAPTCHA_EXPIRY = 5 * 60; // 5分钟（秒）
 const MAX_SEND_ATTEMPTS = 5; // 最大发送次数
-const SEND_COOLDOWN = 60 * 1000; // 发送冷却时间（60秒）
+const SEND_COOLDOWN = 60; // 发送冷却时间（秒）
 
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
@@ -84,50 +78,23 @@ const generateDefaultUsername = () => {
   return `Mio用户_${randomStr}`;
 };
 
-const checkLoginAttempts = (identifier) => {
-  const now = Date.now();
-  const attempts = loginAttempts.get(identifier);
-
-  if (!attempts) {
-    return { canLogin: true, remainingAttempts: MAX_LOGIN_ATTEMPTS };
-  }
-
-  if (now > attempts.lockUntil) {
-    loginAttempts.delete(identifier);
-    return { canLogin: true, remainingAttempts: MAX_LOGIN_ATTEMPTS };
-  }
-
-  if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
-    const remainingTime = Math.ceil((attempts.lockUntil - now) / 1000);
-    return { 
-      canLogin: false, 
-      remainingAttempts: 0, 
-      remainingTime,
-      message: `账户已锁定，请${remainingTime}秒后再试`
-    };
-  }
-
-  return { 
-    canLogin: true, 
-    remainingAttempts: MAX_LOGIN_ATTEMPTS - attempts.count 
-  };
+// 登录尝试检查 - 使用数据库持久化存储
+const checkLoginAttempts = async (identifier) => {
+  return await rateLimiter.checkLoginAttempts(identifier, {
+    maxAttempts: MAX_LOGIN_ATTEMPTS,
+    lockoutDuration: LOCKOUT_DURATION,
+  });
 };
 
-const recordFailedLogin = (identifier) => {
-  const now = Date.now();
-  const attempts = loginAttempts.get(identifier) || { count: 0, lockUntil: 0 };
-
-  attempts.count++;
-  
-  if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
-    attempts.lockUntil = now + LOCKOUT_DURATION;
-  }
-
-  loginAttempts.set(identifier, attempts);
+const recordFailedLogin = async (identifier) => {
+  return await rateLimiter.recordFailedLogin(identifier, {
+    maxAttempts: MAX_LOGIN_ATTEMPTS,
+    lockoutDuration: LOCKOUT_DURATION,
+  });
 };
 
-const clearLoginAttempts = (identifier) => {
-  loginAttempts.delete(identifier);
+const clearLoginAttempts = async (identifier) => {
+  await rateLimiter.clearLoginAttempts(identifier);
 };
 
 // 发送验证码
@@ -143,7 +110,7 @@ const sendVerificationCode = async (req, res, next) => {
       });
     }
 
-    const captchaValidation = verifyImageCaptcha(captchaId, captchaInput);
+    const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
     if (!captchaValidation.valid) {
       return res.status(400).json({
         error: 'ValidationError',
@@ -167,27 +134,17 @@ const sendVerificationCode = async (req, res, next) => {
       });
     }
 
-    // 检查发送频率限制
-    const now = Date.now();
-    const attempts = codeSendAttempts.get(sanitizedEmail);
+    // 检查发送频率限制 - 使用 rateLimiter
+    const rateCheck = await rateLimiter.checkCodeSendRate(sanitizedEmail, {
+      maxAttempts: MAX_SEND_ATTEMPTS,
+      cooldownSeconds: SEND_COOLDOWN,
+    });
 
-    if (attempts) {
-      // 检查冷却时间
-      if (now - attempts.lastSent < SEND_COOLDOWN) {
-        const remainingTime = Math.ceil((SEND_COOLDOWN - (now - attempts.lastSent)) / 1000);
-        return res.status(429).json({
-          error: 'TooManyRequests',
-          message: `请${remainingTime}秒后再试`
-        });
-      }
-
-      // 检查最大发送次数
-      if (attempts.count >= MAX_SEND_ATTEMPTS) {
-        return res.status(429).json({
-          error: 'TooManyRequests',
-          message: '发送次数过多，请稍后再试'
-        });
-      }
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: 'TooManyRequests',
+        message: rateCheck.message
+      });
     }
 
     // 检查邮箱是否已存在
@@ -213,26 +170,23 @@ const sendVerificationCode = async (req, res, next) => {
 
     // 生成验证码
     const code = generateVerificationCode();
-    const expiry = Date.now() + CODE_EXPIRY;
 
-    // 存储验证码
-    verificationCodes.set(sanitizedEmail, { code, expiry });
+    // 存储验证码 - 使用 cacheService
+    await cacheService.set(`verify_code:${sanitizedEmail}`, { code }, CODE_EXPIRY);
 
-    // 更新发送记录
-    const newAttempts = {
-      count: (attempts?.count || 0) + 1,
-      lastSent: now
-    };
-    codeSendAttempts.set(sanitizedEmail, newAttempts);
+    // 记录发送 - 使用 rateLimiter
+    await rateLimiter.recordCodeSend(sanitizedEmail, {
+      maxAttempts: MAX_SEND_ATTEMPTS,
+      windowSeconds: 3600,
+    });
 
     // 发送验证码邮件
     try {
       await sendEmail(sanitizedEmail, 'verification', { code });
-      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}, 验证码: ${code}, 发送次数: ${newAttempts.count}`);
+      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}`);
     } catch (emailError) {
       console.error('[验证码发送失败]', emailError.message);
       // 即使邮件发送失败，也返回成功（测试环境可能没有SMTP）
-      // 生产环境应该返回错误
     }
 
     // 生成新的图片验证码供注册时使用
@@ -247,15 +201,20 @@ const sendVerificationCode = async (req, res, next) => {
       fontSize: 36
     });
     const newCaptchaId = Date.now().toString() + Math.random().toString(36).substring(2);
-    imageCaptchaCodes.set(newCaptchaId, {
-      code: newCaptcha.text.toLowerCase(),
-      expiry: Date.now() + CAPTCHA_EXPIRY
-    });
+
+    // 存储图片验证码 - 使用 cacheService
+    await cacheService.set(`captcha:${newCaptchaId}`, {
+      code: newCaptcha.text.toLowerCase()
+    }, CAPTCHA_EXPIRY);
+
+    // 获取当前发送次数
+    const sendRecord = await cacheService.get(`code_send:${sanitizedEmail}`);
+    const currentSendCount = sendRecord?.count || 1;
 
     res.json({
       message: '验证码已发送',
-      expiry: CODE_EXPIRY / 1000, // 返回过期时间（秒）
-      remainingAttempts: MAX_SEND_ATTEMPTS - newAttempts.count,
+      expiry: CODE_EXPIRY, // 返回过期时间（秒）
+      remainingAttempts: MAX_SEND_ATTEMPTS - currentSendCount,
       // 返回新的图片验证码供注册时使用
       newCaptcha: {
         id: newCaptchaId,
@@ -272,7 +231,7 @@ const sendVerificationCode = async (req, res, next) => {
 const sendVerificationCodeWithCaptcha = async (req, res, next) => {
   try {
     const { email, captchaId, captchaInput, purpose } = req.body;
-    
+
     console.log('[发送验证码] 收到请求:', JSON.stringify({
       email,
       captchaId,
@@ -291,7 +250,7 @@ const sendVerificationCodeWithCaptcha = async (req, res, next) => {
       });
     }
 
-    const captchaValidation = verifyImageCaptcha(captchaId, captchaInput);
+    const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
     if (!captchaValidation.valid) {
       return res.status(400).json({
         error: 'ValidationError',
@@ -315,25 +274,17 @@ const sendVerificationCodeWithCaptcha = async (req, res, next) => {
       });
     }
 
-    // 检查发送频率限制
-    const now = Date.now();
-    const attempts = codeSendAttempts.get(sanitizedEmail);
+    // 检查发送频率限制 - 使用 rateLimiter
+    const rateCheck = await rateLimiter.checkCodeSendRate(sanitizedEmail, {
+      maxAttempts: MAX_SEND_ATTEMPTS,
+      cooldownSeconds: SEND_COOLDOWN,
+    });
 
-    if (attempts) {
-      if (now - attempts.lastSent < SEND_COOLDOWN) {
-        const remainingTime = Math.ceil((SEND_COOLDOWN - (now - attempts.lastSent)) / 1000);
-        return res.status(429).json({
-          error: 'TooManyRequests',
-          message: `请${remainingTime}秒后再试`
-        });
-      }
-
-      if (attempts.count >= MAX_SEND_ATTEMPTS) {
-        return res.status(429).json({
-          error: 'TooManyRequests',
-          message: '发送次数过多，请稍后再试'
-        });
-      }
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: 'TooManyRequests',
+        message: rateCheck.message
+      });
     }
 
     // 根据目的检查邮箱
@@ -370,22 +321,20 @@ const sendVerificationCodeWithCaptcha = async (req, res, next) => {
 
     // 生成验证码
     const code = generateVerificationCode();
-    const expiry = Date.now() + CODE_EXPIRY;
 
-    // 存储验证码
-    verificationCodes.set(sanitizedEmail, { code, expiry });
+    // 存储验证码 - 使用 cacheService
+    await cacheService.set(`verify_code:${sanitizedEmail}`, { code }, CODE_EXPIRY);
 
-    // 更新发送记录
-    const newAttempts = {
-      count: (attempts?.count || 0) + 1,
-      lastSent: now
-    };
-    codeSendAttempts.set(sanitizedEmail, newAttempts);
+    // 记录发送 - 使用 rateLimiter
+    await rateLimiter.recordCodeSend(sanitizedEmail, {
+      maxAttempts: MAX_SEND_ATTEMPTS,
+      windowSeconds: 3600,
+    });
 
     // 发送验证码邮件
     try {
       await sendEmail(sanitizedEmail, 'verification', { code });
-      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}, 验证码: ${code}, 发送次数: ${newAttempts.count}`);
+      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}`);
     } catch (emailError) {
       console.error('[验证码发送失败]', emailError.message);
     }
@@ -402,10 +351,11 @@ const sendVerificationCodeWithCaptcha = async (req, res, next) => {
       fontSize: 36
     });
     const newCaptchaId = Date.now().toString() + Math.random().toString(36).substring(2);
-    imageCaptchaCodes.set(newCaptchaId, {
-      code: newCaptcha.text.toLowerCase(),
-      expiry: Date.now() + CAPTCHA_EXPIRY
-    });
+
+    // 存储图片验证码 - 使用 cacheService
+    await cacheService.set(`captcha:${newCaptchaId}`, {
+      code: newCaptcha.text.toLowerCase()
+    }, CAPTCHA_EXPIRY);
 
     res.json({
       message: '验证码已发送',
@@ -420,16 +370,13 @@ const sendVerificationCodeWithCaptcha = async (req, res, next) => {
   }
 };
 
-// 验证验证码
-const verifyCode = (email, code) => {
-  const stored = verificationCodes.get(email);
+// 验证验证码 - 使用数据库持久化存储
+const verifyCode = async (email, code) => {
+  const cacheKey = `verify_code:${email}`;
+  const stored = await cacheService.get(cacheKey);
+
   if (!stored) {
     return { valid: false, message: '验证码不存在或已过期' };
-  }
-
-  if (Date.now() > stored.expiry) {
-    verificationCodes.delete(email);
-    return { valid: false, message: '验证码已过期' };
   }
 
   if (stored.code !== code.toUpperCase()) {
@@ -437,12 +384,12 @@ const verifyCode = (email, code) => {
   }
 
   // 验证成功，删除验证码
-  verificationCodes.delete(email);
+  await cacheService.del(cacheKey);
   return { valid: true };
 };
 
-// 生成图片验证码
-const generateImageCaptcha = (req, res) => {
+// 生成图片验证码 - 使用数据库持久化存储
+const generateImageCaptcha = async (req, res) => {
   try {
     const captcha = svgCaptcha.create({
       size: 4, // 验证码长度
@@ -456,17 +403,16 @@ const generateImageCaptcha = (req, res) => {
     });
 
     const captchaId = Date.now().toString() + Math.random().toString(36).substring(2);
-    
-    // 存储验证码
-    imageCaptchaCodes.set(captchaId, {
-      code: captcha.text.toLowerCase(),
-      expiry: Date.now() + CAPTCHA_EXPIRY
-    });
+
+    // 存储验证码 - 使用 cacheService
+    await cacheService.set(`captcha:${captchaId}`, {
+      code: captcha.text.toLowerCase()
+    }, CAPTCHA_EXPIRY);
 
     // 设置响应头
     res.setHeader('Content-Type', 'image/svg+xml');
     res.setHeader('X-Captcha-Id', captchaId);
-    
+
     // 返回SVG图片
     res.send(captcha.data);
   } catch (error) {
@@ -478,25 +424,19 @@ const generateImageCaptcha = (req, res) => {
   }
 };
 
-// 验证图片验证码
-const verifyImageCaptcha = (captchaId, code) => {
+// 验证图片验证码 - 使用数据库持久化存储
+const verifyImageCaptcha = async (captchaId, code) => {
   console.log('[验证码验证] captchaId:', captchaId, 'code:', code);
-  console.log('[验证码验证] 当前存储的验证码数量:', imageCaptchaCodes.size);
-  console.log('[验证码验证] 存储的验证码ID:', Array.from(imageCaptchaCodes.keys()));
-  
-  const stored = imageCaptchaCodes.get(captchaId);
+
+  const cacheKey = `captcha:${captchaId}`;
+  const stored = await cacheService.get(cacheKey);
+
   if (!stored) {
     console.log('[验证码验证] 验证码不存在');
     return { valid: false, message: '验证码不存在或已过期' };
   }
 
   console.log('[验证码验证] 存储的code:', stored.code, '输入的code:', code.toLowerCase());
-  
-  if (Date.now() > stored.expiry) {
-    imageCaptchaCodes.delete(captchaId);
-    console.log('[验证码验证] 验证码已过期');
-    return { valid: false, message: '验证码已过期' };
-  }
 
   if (stored.code !== code.toLowerCase()) {
     console.log('[验证码验证] 验证码不匹配');
@@ -504,7 +444,7 @@ const verifyImageCaptcha = (captchaId, code) => {
   }
 
   // 验证成功，删除验证码
-  imageCaptchaCodes.delete(captchaId);
+  await cacheService.del(cacheKey);
   console.log('[验证码验证] 验证成功');
   return { valid: true };
 };
@@ -557,7 +497,7 @@ const register = async (req, res, next) => {
       });
     }
 
-    const captchaValidation = verifyImageCaptcha(captchaId, captchaInput);
+    const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
     if (!captchaValidation.valid) {
       return res.status(400).json({
         error: 'ValidationError',
@@ -571,9 +511,9 @@ const register = async (req, res, next) => {
     });
 
     if (existingUser) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'DuplicateError',
-        message: '邮箱已被使用' 
+        message: '邮箱已被使用'
       });
     }
 
@@ -588,7 +528,7 @@ const register = async (req, res, next) => {
         });
       }
 
-      const codeValidation = verifyCode(sanitizedEmail, verificationCode);
+      const codeValidation = await verifyCode(sanitizedEmail, verificationCode);
       if (!codeValidation.valid) {
         return res.status(400).json({
           error: 'ValidationError',
@@ -665,17 +605,17 @@ const login = async (req, res, next) => {
     const { email, password, rememberMe } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'ValidationError',
-        message: '请填写邮箱和密码' 
+        message: '请填写邮箱和密码'
       });
     }
 
     const sanitizedEmail = sanitizeInput(email.toLowerCase());
 
-    const attemptCheck = checkLoginAttempts(sanitizedEmail);
-    if (!attemptCheck.canLogin) {
-      return res.status(429).json({ 
+    const attemptCheck = await checkLoginAttempts(sanitizedEmail);
+    if (!attemptCheck.allowed) {
+      return res.status(429).json({
         error: 'TooManyAttempts',
         message: attemptCheck.message,
         remainingTime: attemptCheck.remainingTime
@@ -683,17 +623,17 @@ const login = async (req, res, next) => {
     }
 
     const user = await prisma.user.findFirst({
-      where: { 
+      where: {
         OR: [
-          { email: sanitizedEmail }, 
+          { email: sanitizedEmail },
           { username: sanitizedEmail }
-        ] 
+        ]
       },
     });
 
     if (!user) {
-      recordFailedLogin(sanitizedEmail);
-      return res.status(401).json({ 
+      await recordFailedLogin(sanitizedEmail);
+      return res.status(401).json({
         error: 'AuthenticationError',
         message: '邮箱或密码错误',
         remainingAttempts: attemptCheck.remainingAttempts - 1
@@ -711,15 +651,15 @@ const login = async (req, res, next) => {
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      recordFailedLogin(sanitizedEmail);
-      return res.status(401).json({ 
+      await recordFailedLogin(sanitizedEmail);
+      return res.status(401).json({
         error: 'AuthenticationError',
         message: '邮箱或密码错误',
         remainingAttempts: attemptCheck.remainingAttempts - 1
       });
     }
 
-    clearLoginAttempts(sanitizedEmail);
+    await clearLoginAttempts(sanitizedEmail);
 
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
@@ -730,6 +670,7 @@ const login = async (req, res, next) => {
     await prisma.refreshToken.create({
       data: {
         token: refreshToken,
+        id: require('crypto').randomUUID(),
         userId: user.id,
         expiresAt: refreshTokenExpires,
       },
@@ -749,7 +690,7 @@ const login = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error(`[登录错误] 邮箱: ${email}, 错误: ${error.message}`);
+    console.error(`[登录错误] 邮箱: ${typeof sanitizedEmail !== 'undefined' ? sanitizedEmail : (typeof email !== 'undefined' ? email : 'unknown')}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -798,6 +739,7 @@ const refreshToken = async (req, res, next) => {
     await prisma.refreshToken.create({
       data: {
         token: newRefreshToken,
+        id: require('crypto').randomUUID(),
         userId: decoded.userId,
         expiresAt: newExpiresAt,
       },
@@ -816,8 +758,22 @@ const logout = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
 
+    // 删除刷新令牌
     if (refreshToken) {
       await prisma.refreshToken.delete({ where: { token: refreshToken } }).catch(() => {});
+    }
+
+    // 将当前访问令牌加入黑名单
+    if (req.token) {
+      // 获取令牌剩余过期时间
+      const timeUntilExp = getTimeUntilExpiration(req.token);
+      const expiresInSeconds = Math.max(60, Math.ceil(timeUntilExp / 1000)); // 至少保留60秒
+      await blacklistToken(req.token, expiresInSeconds);
+    }
+
+    // 清除用户会话缓存
+    if (req.user && req.user.id) {
+      await clearUserSessionCache(req.user.id);
     }
 
     res.json({ message: '登出成功' });
@@ -1007,7 +963,7 @@ const resetPassword = async (req, res, next) => {
     }
 
     // 验证验证码
-    const codeValidation = verifyCode(sanitizedEmail, verificationCode);
+    const codeValidation = await verifyCode(sanitizedEmail, verificationCode);
     if (!codeValidation.valid) {
       return res.status(400).json({
         error: 'ValidationError',
@@ -1051,8 +1007,8 @@ const resetPassword = async (req, res, next) => {
     console.log(`[重置密码成功] 邮箱: ${sanitizedEmail}`);
 
     res.json({
-      message: '密码重置成功，请使用新密码登录',
-      newPassword: newPassword
+      message: '密码重置成功，请使用新密码登录'
+      // 注意：绝不能返回明文密码
     });
   } catch (error) {
     console.error(`[重置密码错误] 错误: ${error.message}`);

@@ -3,16 +3,16 @@ import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { getImageUrl } from '../utils/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
+import { useToast } from '../context/ToastContext';
 import {
   Users,
   FileText,
   Clock,
   UserX,
   TrendingUp,
-  Calendar,
   ArrowRight,
-  Shield,
+  RefreshCw,
 } from 'lucide-react';
 
 /**
@@ -20,29 +20,38 @@ import {
  * 展示系统统计数据、最近注册用户和日记
  */
 const AdminDashboard = () => {
+  const toast = useToast();
   const [stats, setStats] = useState(null);
   const [recentUsers, setRecentUsers] = useState([]);
   const [recentDiaries, setRecentDiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError('');
       const response = await api.get('/admin/dashboard');
-      setStats(response.data.stats);
-      setRecentUsers(response.data.recentUsers);
-      setRecentDiaries(response.data.recentDiaries);
+      const data = response.data || {};
+      setStats(data.stats || null);
+      setRecentUsers(data.recentUsers || []);
+      setRecentDiaries(data.recentDiaries || []);
     } catch (err) {
       console.error('获取仪表盘数据失败:', err);
       setError(err.response?.data?.message || '获取数据失败');
+      toast.error(err.response?.data?.message || '获取数据失败');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -58,7 +67,7 @@ const AdminDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <LoadingSpinner size="large" />
       </div>
     );
@@ -69,21 +78,21 @@ const AdminDashboard = () => {
       title: '总用户数',
       value: stats?.totalUsers || 0,
       icon: Users,
-      color: 'blue',
+      bgColor: 'bg-blue-600',
       link: '/admin/users',
     },
     {
       title: '总日记数',
       value: stats?.totalDiaries || 0,
       icon: FileText,
-      color: 'green',
+      bgColor: 'bg-green-600',
       link: '/admin/reviews',
     },
     {
       title: '待审核',
       value: stats?.pendingReviews || 0,
       icon: Clock,
-      color: 'yellow',
+      bgColor: 'bg-yellow-600',
       link: '/admin/reviews',
       alert: stats?.pendingReviews > 0,
     },
@@ -91,99 +100,95 @@ const AdminDashboard = () => {
       title: '封禁用户',
       value: stats?.bannedUsers || 0,
       icon: UserX,
-      color: 'red',
+      bgColor: 'bg-red-600',
       link: '/admin/users',
     },
   ];
 
-  const getColorClasses = (color) => {
-    const colors = {
-      blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400',
-      green: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400',
-      yellow: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400',
-      red: 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
-    };
-    return colors[color] || colors.blue;
-  };
-
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
-      {/* 页面标题 */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600 dark:text-indigo-400" />
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
-            管理仪表盘
-          </h1>
+    <div className="space-y-6">
+      {/* 页面标题和刷新按钮 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">仪表盘</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">查看系统运行状态和数据概览</p>
         </div>
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          欢迎回来，查看系统运行状态和数据概览
-        </p>
+        <button
+          onClick={() => fetchDashboardData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors text-sm font-medium"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? '刷新中...' : '刷新'}
+        </button>
       </div>
 
-      <ErrorMessage message={error} />
+      {/* <ErrorMessage message={error} /> */}
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
             <Link
               key={card.title}
               to={card.link}
-              className="bg-white dark:bg-gray-800 rounded-xl p-4 sm:p-6 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow"
+              className="bg-white dark:bg-gray-800 rounded-xl p-5 sm:p-6 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-lg hover:border-indigo-200 dark:hover:border-indigo-800 transition-all group"
             >
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+              <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     {card.title}
                   </p>
-                  <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
+                  <p className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">
                     {card.value}
                   </p>
+                  {card.alert && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 flex items-center gap-1">
+                      <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                      需要处理
+                    </p>
+                  )}
                 </div>
-                <div className={`p-2 sm:p-3 rounded-lg self-start ${getColorClasses(card.color)}`}>
-                  <Icon className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
+                <div className={`w-12 h-12 rounded-xl ${card.bgColor} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
+                  <Icon className="w-6 h-6 text-white" />
                 </div>
               </div>
-              {card.alert && (
-                <div className="mt-3 sm:mt-4 flex items-center gap-2 text-xs sm:text-sm text-yellow-600 dark:text-yellow-400">
-                  <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-                  需要处理
-                </div>
-              )}
             </Link>
           );
         })}
       </div>
 
       {/* 今日数据 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sm:p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-6 sm:mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 dark:text-indigo-400" />
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-            今日动态
-          </h2>
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">今日动态</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">今日新增数据统计</p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+            <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+              <Users className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">今日新用户</p>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-sm text-gray-500 dark:text-gray-400">今日新用户</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {stats?.todayUsers || 0}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-              <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />
+          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+            <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+              <FileText className="w-7 h-7 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">今日新日记</p>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-sm text-gray-500 dark:text-gray-400">今日新日记</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {stats?.todayDiaries || 0}
               </p>
             </div>
@@ -191,20 +196,23 @@ const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* 列表区域 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 最近注册用户 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                   最近注册用户
                 </h2>
               </div>
               <Link
                 to="/admin/users"
-                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
               >
                 查看全部
                 <ArrowRight className="w-4 h-4" />
@@ -213,14 +221,14 @@ const AdminDashboard = () => {
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {recentUsers.length === 0 ? (
-              <div className="p-6 text-center text-gray-500 dark:text-gray-400">
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400">
                 暂无注册用户
               </div>
             ) : (
               recentUsers.map((user) => (
                 <div
                   key={user.id}
-                  className="p-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  className="px-6 py-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 >
                   <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center overflow-hidden">
                     {user.avatarUrl ? (
@@ -228,17 +236,12 @@ const AdminDashboard = () => {
                         src={getImageUrl(user.avatarUrl)}
                         alt={user.username}
                         className="w-10 h-10 rounded-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
                       />
-                    ) : null}
-                    <span 
-                      className={`text-sm font-medium text-indigo-600 dark:text-indigo-400 ${user.avatarUrl ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
-                    >
-                      {user.username.charAt(0).toUpperCase()}
-                    </span>
+                    ) : (
+                      <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                        {user.username.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 dark:text-white truncate">
@@ -250,7 +253,7 @@ const AdminDashboard = () => {
                   </div>
                   <div className="text-right">
                     <span
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                         user.role === 'admin'
                           ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -269,18 +272,20 @@ const AdminDashboard = () => {
         </div>
 
         {/* 最近日记 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                   最近日记
                 </h2>
               </div>
               <Link
                 to="/admin/reviews"
-                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
               >
                 查看全部
                 <ArrowRight className="w-4 h-4" />
@@ -289,14 +294,14 @@ const AdminDashboard = () => {
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {recentDiaries.length === 0 ? (
-              <div className="p-6 text-center text-gray-500 dark:text-gray-400">
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400">
                 暂无日记
               </div>
             ) : (
               recentDiaries.map((diary) => (
                 <div
                   key={diary.id}
-                  className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -322,7 +327,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right">
                       <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                           diary.status === 'pending'
                             ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
                             : diary.status === 'approved'

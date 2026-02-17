@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import {
   Bell,
   Check,
@@ -62,9 +64,10 @@ const getNotificationTypeLabel = (type) => {
  */
 const NotificationsPage = () => {
   const navigate = useNavigate();
+  const toast = useToast();
+  const { isAuthenticated } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -75,13 +78,22 @@ const NotificationsPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
-    fetchNotifications();
-  }, [pagination.page]);
+    if (isAuthenticated) {
+      fetchNotifications();
+    } else {
+      setLoading(false);
+    }
+  }, [pagination.page, isAuthenticated]);
 
   const fetchNotifications = async () => {
+    // 未登录时不请求
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
-      setError('');
 
       const response = await api.get(
         `/notifications?page=${pagination.page}&limit=${pagination.limit}`
@@ -91,7 +103,10 @@ const NotificationsPage = () => {
       setUnreadCount(response.data.unreadCount);
     } catch (err) {
       console.error('获取通知失败:', err);
-      setError(err.response?.data?.message || '获取通知失败');
+      // 认证错误静默处理，不显示错误提示
+      if (!err.isAuthError) {
+        toast.error(err.response?.data?.message || '获取通知失败');
+      }
     } finally {
       setLoading(false);
     }
@@ -218,7 +233,7 @@ const NotificationsPage = () => {
           </p>
         </div>
 
-        <ErrorMessage message={error} />
+        {/* <ErrorMessage message={error} /> */}
 
         {/* 操作栏 */}
         {notifications.length > 0 && (

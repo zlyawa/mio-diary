@@ -3,19 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { User, Lock, Calendar, Settings2, Image, ArrowLeft } from 'lucide-react';
 import api, { getImageUrl } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import ErrorMessage from '../components/common/ErrorMessage';
 import AvatarUploader from '../components/profile/AvatarUploader';
 import BackgroundUploader from '../components/profile/BackgroundUploader';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
-  const { user: authUser, logout, updateUser } = useAuth();
+  const { user: authUser, logout, updateUser, isAuthenticated } = useAuth();
+  const toast = useToast();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState({
     bio: '',
     diaryPublic: true,
@@ -27,10 +26,20 @@ const SettingsPage = () => {
   const [usernameSaving, setUsernameSaving] = useState(false);
 
   useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (isAuthenticated) {
+      fetchUserData();
+    } else {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
 
   const fetchUserData = async () => {
+    // 未登录时不请求
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       const response = await api.get('/profile/me');
       setUser(response.data.user);
@@ -41,7 +50,10 @@ const SettingsPage = () => {
         username: response.data.user.username || ''
       }));
     } catch (error) {
-      setError(error.response?.data?.message || '获取用户信息失败');
+      // 认证错误静默处理，不显示错误提示
+      if (!error.isAuthError) {
+        toast.error(error.response?.data?.message || '获取用户信息失败');
+      }
     } finally {
       setLoading(false);
     }
@@ -49,8 +61,6 @@ const SettingsPage = () => {
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccessMessage('');
     try {
       // 如果用户名有变化，先更新用户名
       if (formData.username !== user?.username) {
@@ -64,30 +74,27 @@ const SettingsPage = () => {
         diaryPublic: formData.diaryPublic
       });
       await fetchUserData();
-      setSuccessMessage('个人资料更新成功');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      toast.success('个人资料更新成功');
     } catch (error) {
-      setError(error.response?.data?.message || '更新失败');
+      toast.error(error.response?.data?.message || '更新失败');
     }
   };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccessMessage('');
     try {
       await api.put('/profile/password', {
         currentPassword: formData.currentPassword,
         newPassword: formData.newPassword,
       });
-      setSuccessMessage('密码修改成功，请重新登录');
+      toast.success('密码修改成功，请重新登录');
       setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '' }));
       setTimeout(async () => {
         await logout();
         navigate('/login');
       }, 2000);
     } catch (error) {
-      setError(error.response?.data?.message || '修改失败');
+      toast.error(error.response?.data?.message || '修改失败');
     }
   };
 
@@ -100,18 +107,15 @@ const SettingsPage = () => {
   };
 
   const handleUpdateUsername = async () => {
-    setError('');
-    setSuccessMessage('');
     setUsernameSaving(true);
 
     try {
       await api.put('/auth/username', { username: formData.username });
       await fetchUserData();
-      setSuccessMessage('用户名修改成功');
+      toast.success('用户名修改成功');
       setUsernameEditing(false);
-      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
-      setError(error.response?.data?.message || '修改失败');
+      toast.error(error.response?.data?.message || '修改失败');
     } finally {
       setUsernameSaving(false);
     }
@@ -138,16 +142,6 @@ const SettingsPage = () => {
             <span>返回</span>
           </button>
         </div>
-
-        {error && (
-          <ErrorMessage message={error} onDismiss={() => setError('')} />
-        )}
-
-        {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300">
-            {successMessage}
-          </div>
-        )}
 
         <div className="space-y-8">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">

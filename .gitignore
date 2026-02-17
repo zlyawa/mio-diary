@@ -3,6 +3,7 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
 
 # Build output
 frontend/dist/
@@ -27,6 +28,7 @@ logs/
 *.log
 log.txt
 warn.txt
+check.txt
 
 # IDE
 .vscode/
@@ -55,5 +57,16 @@ test_*.sh
 test_*.py
 test.txt
 
-# Fixed version
-mio-diary-project-fixed.tar.gz
+# Archives
+*.tar.gz
+*.zip
+
+# Lock files
+.script.lock
+
+# iFlow CLI
+.iflow/
+
+# Backup files
+*.bak
+frontend/src/pages/SystemSettings.jsx.bak

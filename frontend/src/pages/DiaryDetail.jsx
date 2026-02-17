@@ -7,11 +7,16 @@ import {
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { useToast } from '../context/ToastContext';
 import Skeleton from '../components/common/Skeleton';
+import CommentSection from '../components/comments/CommentSection';
+import LikeButton from '../components/interactions/LikeButton';
+import FavoriteButton from '../components/interactions/FavoriteButton';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useConfig } from '../context/ConfigContext';
 import { getImageUrl } from '../utils/api';
 
 /**
@@ -56,7 +61,9 @@ const STATUS_CONFIG = {
 const DiaryDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const { enableLike, enableComment, enableFavorite, enableShare } = useConfig();
+  const toast = useToast();
   const [diary, setDiary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -84,19 +91,27 @@ const DiaryDetail = () => {
    * 获取日记详情
    */
   const fetchDiary = useCallback(async () => {
+    // 未登录时不请求
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
-    setError('');
     try {
       const response = await api.get(`/diaries/${id}`);
       setDiary(response.data.diary);
     } catch (err) {
       console.error('获取日记失败:', err);
-      setError(err.response?.data?.error || err.response?.data?.message || '获取日记失败');
+      // 认证错误静默处理，不显示错误提示
+      if (!err.isAuthError) {
+        toast.error(err.response?.data?.error || err.response?.data?.message || '获取日记失败');
+      }
       setDiary(null);
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [id, toast, isAuthenticated]);
 
   /**
    * 删除日记
@@ -114,10 +129,11 @@ const DiaryDetail = () => {
       } else {
         await api.delete(`/diaries/${id}`);
       }
+      toast.success('日记删除成功');
       navigate('/diaries');
     } catch (err) {
       console.error('删除日记失败:', err);
-      setError(err.response?.data?.error || err.response?.data?.message || '删除失败');
+      toast.error(err.response?.data?.error || err.response?.data?.message || '删除失败');
     } finally {
       setIsDeleting(false);
     }
@@ -149,9 +165,9 @@ const DiaryDetail = () => {
     } else {
       // 复制链接到剪贴板
       navigator.clipboard.writeText(url).then(() => {
-        alert('链接已复制到剪贴板');
+        toast.success('链接已复制到剪贴板');
       }).catch(() => {
-        alert('复制失败，请手动复制链接');
+        toast.error('复制失败，请手动复制链接');
       });
     }
   };
@@ -275,7 +291,7 @@ const DiaryDetail = () => {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Header />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <ErrorMessage message={error} />
+          {/* <ErrorMessage message={error} /> */}
           <button
             onClick={() => navigate('/diaries')}
             className="mt-4 inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
@@ -326,10 +342,10 @@ const DiaryDetail = () => {
         </button>
 
         {/* 错误提示 */}
-        <ErrorMessage message={error} />
+        {/* <ErrorMessage message={error} /> */}
 
         {/* 日记卡片 */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
           {/* 待审核状态提示 - 仅显示在日记卡片上方 */}
           {showReviewStatus && (
             <div className={`px-4 sm:px-6 py-3 border-b ${diary.status === 'pending' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
@@ -429,13 +445,15 @@ const DiaryDetail = () => {
                 >
                   <Printer size={18} className="sm:w-5 sm:h-5" />
                 </button>
-                <button
-                  onClick={handleShare}
-                  className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors"
-                  title="分享"
-                >
-                  <Share2 size={18} className="sm:w-5 sm:h-5" />
-                </button>
+                {enableShare && (
+                  <button
+                    onClick={handleShare}
+                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors"
+                    title="分享"
+                  >
+                    <Share2 size={18} className="sm:w-5 sm:h-5" />
+                  </button>
+                )}
                 {(isOwnDiary || isAdmin) && (
                   <button
                     onClick={handleDelete}
@@ -508,18 +526,41 @@ const DiaryDetail = () => {
               </div>
             )}
 
-            {/* 更新时间 */}
-            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-700">
-              最后更新: {new Date(diary.updatedAt).toLocaleDateString('zh-CN', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+            {/* 点赞和收藏按钮 + 更新时间 */}
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+              {diary && (enableLike || enableFavorite) ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    {enableLike && <LikeButton diaryId={diary.id} size="sm" />}
+                    {enableFavorite && <FavoriteButton diaryId={diary.id} size="sm" />}
+                  </div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">
+                    {new Date(diary.updatedAt).toLocaleDateString('zh-CN', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+                  最后更新: {new Date(diary.updatedAt).toLocaleDateString('zh-CN', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* 评论区域 - 根据系统配置显示 */}
+        {enableComment && diary && <CommentSection diaryId={id} />}
       </div>
 
       {/* 图片灯箱 */}

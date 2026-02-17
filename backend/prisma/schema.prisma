@@ -7,114 +7,325 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  username      String         @unique
-  password      String
-  bio           String?        @default("记录生活的每一刻")
-  avatarUrl     String?
-  backgroundUrl String?
-  avatarData    String?
-  diaryPublic   Boolean        @default(true)
-  // 角色与权限
-  role          String         @default("user") // "user", "admin"
-  // 状态与权限
-  isBanned      Boolean        @default(false)
-  needReview    Boolean        @default(false)
-  emailVerified Boolean        @default(false)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
-  diaries       Diary[]
-  notifications Notification[]
-  reviews       Review[]
-  adminLogs     AdminLog[]
+model AdminLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
-  @@index([email])
-  @@index([username])
-  @@index([role])
-  @@index([isBanned])
+  @@index([createdAt])
+  @@index([adminId])
+}
+
+model Announcement {
+  id        String    @id @default(uuid())
+  title     String
+  content   String
+  type      String    @default("info")
+  priority  Int       @default(0)
+  isPinned  Boolean   @default(false)
+  isActive  Boolean   @default(true)
+  startAt   DateTime?
+  endAt     DateTime?
+  createdBy String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  viewCount Int       @default(0)
+  author    User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([priority])
+  @@index([endAt])
+  @@index([startAt])
+  @@index([isPinned])
+  @@index([isActive])
+}
+
+model Cache {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([key])
+}
+
+model Category {
+  id             String     @id @default(uuid())
+  name           String
+  parentId       String?
+  userId         String
+  color          String?
+  createdAt      DateTime   @default(now())
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent         Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryToCategory")
+  diaries        Diary[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Comment {
+  id                 String               @id @default(uuid())
+  content            String
+  images             String?              // JSON数组存储图片URL
+  userId             String
+  diaryId            String
+  parentId           String?
+  status             String               @default("approved")
+  auditReason        String?
+  moderationSource   String?
+  moderatedAt        DateTime?
+  editCount          Int                  @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  parent             Comment?             @relation("CommentToComment", fields: [parentId], references: [id])
+  replies            Comment[]            @relation("CommentToComment")
+  diary              Diary                @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  editHistory        CommentEditHistory[]
+  likes              CommentLike[]
+  reports            CommentReport[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([parentId])
+  @@index([userId])
+  @@index([diaryId])
+}
+
+model CommentEditHistory {
+  id         String   @id @default(uuid())
+  commentId  String
+  oldContent String
+  newContent String
+  editedBy   String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [editedBy], references: [id], onDelete: Cascade)
+  comment    Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([commentId])
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+}
+
+model CommentReport {
+  id          String    @id @default(uuid())
+  commentId   String
+  reporterId  String
+  reason      String
+  description String?
+  status      String    @default("pending")
+  handledBy   String?
+  handledAt   DateTime?
+  createdAt   DateTime  @default(now())
+  reporter    User      @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  comment     Comment   @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([reporterId])
+  @@index([commentId])
+}
+
+model ConfigLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  configKey  String
+  oldValue   String?
+  newValue   String
+  changeType String   @default("update")
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([configKey])
+  @@index([adminId])
+}
+
+model Diary {
+  id         String      @id @default(uuid())
+  title      String
+  content    String
+  mood       String      @default("neutral")
+  tags       String
+  images     String
+  status     String      @default("approved")
+  userId     String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  categoryId String?
+  comments   Comment[]
+  category   Category?   @relation(fields: [categoryId], references: [id])
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favorites  Favorite[]
+  likes      Like[]
+  reviews    Review[]
+  shareLinks ShareLink[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([userId, createdAt])
+  @@index([mood])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model Favorite {
+  id             String          @id @default(uuid())
+  userId         String
+  diaryId        String
+  folderId       String?
+  createdAt      DateTime        @default(now())
+  folder         FavoriteFolder? @relation(fields: [folderId], references: [id])
+  diary          Diary           @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, diaryId])
+  @@index([diaryId])
+}
+
+model FavoriteFolder {
+  id        String     @id @default(uuid())
+  name      String
+  userId    String
+  createdAt DateTime   @default(now())
+  favorites Favorite[]
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  diaryId   String
+  createdAt DateTime @default(now())
+  diary     Diary    @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, diaryId])
+  @@index([diaryId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  content   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([isRead])
+  @@index([userId])
 }
 
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model Diary {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  mood      String   @default("neutral")
-  tags      String
-  images    String
-  // 审核状态
-  status    String   @default("approved") // "pending", "approved", "rejected"
-  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  reviews   Review[]
 
+  @@index([expiresAt])
   @@index([userId])
-  @@index([createdAt])
-  @@index([mood])
-  @@index([userId, createdAt])
-  @@index([status])
-}
-
-model SystemConfig {
-  key       String   @id
-  value     String   // JSON字符串存储
-  updatedAt DateTime @updatedAt
 }
 
 model Review {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   diaryId   String
-  diary     Diary    @relation(fields: [diaryId], references: [id], onDelete: Cascade)
-  status    String   @default("pending") // pending, approved, rejected
+  status    String   @default("pending")
   reason    String?
   createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([diaryId])
-  @@index([status])
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
+  diary     Diary    @relation(fields: [diaryId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String
-  title     String
-  content   String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
 
+  @@index([status])
+  @@index([diaryId])
   @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
 }
 
-model AdminLog {
-  id        String   @id @default(uuid())
-  adminId   String
-  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
-  action    String
-  details   String?  // JSON字符串存储
-  createdAt DateTime @default(now())
+model ShareLink {
+  id          String   @id @default(uuid())
+  diaryId     String
+  userId      String
+  token       String   @unique
+  password    String?
+  expiresAt   DateTime
+  accessCount Int      @default(0)
+  maxAccess   Int?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+  diary       Diary    @relation(fields: [diaryId], references: [id], onDelete: Cascade)
 
-  @@index([adminId])
-  @@index([createdAt])
+  @@index([diaryId])
+  @@index([token])
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id                 String               @id
+  email              String               @unique
+  username           String               @unique
+  password           String
+  bio                String?              @default("记录生活的每一刻")
+  avatarUrl          String?
+  backgroundUrl      String?
+  avatarData         String?
+  diaryPublic        Boolean              @default(true)
+  role               String               @default("user")
+  isBanned           Boolean              @default(false)
+  needReview         Boolean              @default(false)
+  emailVerified      Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  adminLogs          AdminLog[]
+  announcements      Announcement[]
+  categories         Category[]
+  comments           Comment[]
+  commentEditHistory CommentEditHistory[]
+  commentLikes       CommentLike[]
+  commentReports     CommentReport[]
+  configLogs         ConfigLog[]
+  diaries            Diary[]
+  favorites          Favorite[]
+  favoriteFolders    FavoriteFolder[]
+  likes              Like[]
+  notifications      Notification[]
+  refreshTokens      RefreshToken[]
+  reviews            Review[]
+  shareLinks         ShareLink[]
+
+  @@index([role, isBanned])
+  @@index([isBanned])
+  @@index([role])
 }

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/database'); // 使用单例prisma实例
+const adminController = require('../controllers/adminController');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -377,17 +377,46 @@ router.get('/public', async (req, res) => {
       loginBg: configMap.loginBg || '',
       registerBg: configMap.registerBg || '',
       forgotPasswordBg: configMap.forgotPasswordBg || '',
-      enableReview: configMap.enableUserReview || false,
-      enableEmailVerify: configMap.enableEmailVerify || false,
-      siteAnnouncement: configMap.siteAnnouncement || ''
+      enableReview: configMap.enableUserReview === true,
+      enableEmailVerify: configMap.enableEmailVerify === true,
+      siteAnnouncement: configMap.siteAnnouncement || '',
+      // 功能开关配置 - 默认关闭
+      enableLike: configMap.enableLike === true,
+      enableComment: configMap.enableComment === true,
+      enableFavorite: configMap.enableFavorite === true,
+      enableShare: configMap.enableShare === true,
+      enableStatistics: configMap.enableStatistics === true,
+      // 评论配置 - 默认关闭
+      enableCommentReview: configMap.enableCommentReview === true,
+      allowGuestComment: configMap.allowGuestComment === true,
+      enableCommentNotification: configMap.enableCommentNotification === true,
+      // 用户注册配置 - 默认关闭
+      allowRegister: configMap.allowRegister === true,
+      requireEmailVerify: configMap.requireEmailVerify === true,
+      enableCaptcha: configMap.enableCaptcha === true,
+      // 内容安全 - 默认关闭
+      enableContentFilter: configMap.enableContentFilter === true,
+      // 外观配置 - 默认关闭
+      showDiaryCount: configMap.showDiaryCount === true,
+      enableHeatmap: configMap.enableHeatmap === true,
+      enableEmojiPicker: configMap.enableEmojiPicker === true,
+      // 主题配置
+      primaryColor: configMap.primaryColor || 'indigo',
+      defaultTheme: configMap.defaultTheme || 'auto'
     });
   } catch (error) {
     console.error('[获取公开配置错误]', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: '获取配置失败',
-      error: error.message 
+      error: error.message
     });
   }
 });
+
+/**
+ * 获取公开公告列表
+ * GET /api/config/announcements
+ */
+router.get('/announcements', adminController.getPublicAnnouncements);
 
 module.exports = router;

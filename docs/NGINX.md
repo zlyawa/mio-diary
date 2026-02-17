@@ -1,6 +1,6 @@
 # Mio Diary Nginx 部署配置
 
-本文档介绍如何使用 Nginx 部署 Mio Diary 项目。
+本文档介绍如何使用 Nginx 部署 Mio Diary v2.1.0 项目。
 
 ## 部署架构
 

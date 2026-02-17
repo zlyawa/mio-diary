@@ -57,11 +57,12 @@ const sendEmailNotification = async (email, template, data) => {
  * 发送审核结果通知（站内+邮件）
  * @param {string} userId - 用户ID
  * @param {string} email - 用户邮箱
+ * @param {string} username - 用户名
  * @param {Object} diary - 日记对象
  * @param {string} status - 审核状态
  * @param {string} reason - 拒绝原因（可选）
  */
-const sendReviewNotification = async (userId, email, diary, status, reason = null) => {
+const sendReviewNotification = async (userId, email, username, diary, status, reason = null) => {
   const isApproved = status === 'approved';
   const title = isApproved 
     ? `您的日记《${diary.title}》已审核通过`
@@ -75,12 +76,13 @@ const sendReviewNotification = async (userId, email, diary, status, reason = nul
   await notifyUser(userId, 'review_result', title, content);
 
   // 发送邮件通知（如果配置了邮件服务）
-      await sendEmailNotification(email, 'diaryReview', {
-      diaryTitle: diary.title,
-      status,
-      reason,
-      reviewTime: new Date().toLocaleString('zh-CN')
-    });
+  await sendEmailNotification(email, 'diaryReview', {
+    username: username || '用户',
+    diaryTitle: diary.title,
+    status,
+    reason,
+    reviewTime: new Date().toLocaleString('zh-CN')
+  });
   return { success: true };
 };
 
@@ -88,10 +90,11 @@ const sendReviewNotification = async (userId, email, diary, status, reason = nul
  * 发送账户状态变更通知
  * @param {string} userId - 用户ID
  * @param {string} email - 用户邮箱
+ * @param {string} username - 用户名
  * @param {string} action - 操作类型（ban/unban）
  * @param {string} reason - 原因（可选）
  */
-const sendAccountStatusNotification = async (userId, email, action, reason = null) => {
+const sendAccountStatusNotification = async (userId, email, username, action, reason = null) => {
   const isBanned = action === 'ban';
   const title = isBanned 
     ? '您的账户已被封禁'
@@ -106,6 +109,7 @@ const sendAccountStatusNotification = async (userId, email, action, reason = nul
 
   // 发送邮件通知
   await sendEmailNotification(email, 'accountStatus', {
+    username: username || '用户',
     action,
     reason,
     time: new Date().toLocaleString('zh-CN')

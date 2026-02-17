@@ -1,10 +1,42 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const prisma = require('../config/database');
 
 /**
  * 邮件服务模块
  * 提供邮件发送、模板渲染等功能
  */
+
+// 获取加密密钥（使用固定的开发密钥或从环境变量读取）
+const getEncryptionKeys = () => {
+  const key = process.env.CONFIG_ENCRYPTION_KEY || 'MioDiary2026SecretKey32Chars!!';
+  const iv = process.env.CONFIG_ENCRYPTION_IV || 'MioDiaryIV16!!';
+  
+  return {
+    key: Buffer.from(key.padEnd(32).slice(0, 32)),
+    iv: Buffer.from(iv.padEnd(16).slice(0, 16))
+  };
+};
+
+/**
+ * 解密敏感数据
+ */
+const decryptSensitiveData = (encryptedText) => {
+  if (!encryptedText || typeof encryptedText !== 'string') return encryptedText;
+  if (!encryptedText.startsWith('enc:')) return encryptedText; // 明文直接返回
+  
+  try {
+    const { key, iv } = getEncryptionKeys();
+    const encrypted = encryptedText.slice(4);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    console.error('[解密失败]', error.message);
+    return null; // 解密失败返回 null
+  }
+};
 
 /**
  * 获取系统邮件配置
@@ -14,7 +46,7 @@ const getEmailConfig = async () => {
     const config = await prisma.systemConfig.findMany({
       where: {
         key: {
-          in: ['smtp', 'enableEmailVerify', 'fromEmail', 'fromName']
+          in: ['smtp', 'enableEmailVerify', 'fromEmail', 'fromName', 'emailTemplates']
         }
       }
     });
@@ -27,12 +59,22 @@ const getEmailConfig = async () => {
         configMap[item.key] = item.value;
       }
     });
+
+    // 获取 SMTP 配置并解密密码
+    let smtp = configMap.smtp || null;
+    if (smtp && smtp.pass) {
+      const decryptedPass = decryptSensitiveData(smtp.pass);
+      if (decryptedPass !== null) {
+        smtp = { ...smtp, pass: decryptedPass };
+      }
+    }
     
     return {
-      smtp: configMap.smtp || null,
+      smtp,
       enableEmailVerify: configMap.enableEmailVerify || false,
       fromEmail: configMap.fromEmail || 'noreply@mio-diary.local',
-      fromName: configMap.fromName || 'Mio日记系统'
+      fromName: configMap.fromName || 'Mio日记系统',
+      emailTemplates: configMap.emailTemplates || {}
     };
   } catch (error) {
     console.error('[获取邮件配置错误]', error);
@@ -40,7 +82,8 @@ const getEmailConfig = async () => {
       smtp: null,
       enableEmailVerify: false,
       fromEmail: 'noreply@mio-diary.local',
-      fromName: 'Mio日记系统'
+      fromName: 'Mio日记系统',
+      emailTemplates: {}
     };
   }
 };
@@ -55,7 +98,8 @@ const createTransporter = async () => {
     throw new Error('SMTP配置未设置');
   }
   
-      return nodemailer.createTransport({    host: smtp.host,
+  return nodemailer.createTransport({
+    host: smtp.host,
     port: smtp.port || 587,
     secure: smtp.secure || false,
     auth: {
@@ -63,166 +107,202 @@ const createTransporter = async () => {
       pass: smtp.pass
     },
     tls: {
-      rejectUnauthorized: false // 允许自签名证书
+      // 生产环境必须验证证书，开发环境可通过环境变量临时禁用
+      rejectUnauthorized: process.env.NODE_ENV === 'production'
+        ? true  // 生产环境必须验证
+        : (process.env.EMAIL_REJECT_UNAUTHORIZED !== 'false') // 开发环境默认验证，除非明确禁用
     }
   });
 };
 
 /**
- * 邮件模板
+ * 替换模板变量
+ * @param {string} template - 模板字符串
+ * @param {object} data - 变量数据
+ * @returns {string} - 替换后的字符串
+ */
+const replaceTemplateVariables = (template, data) => {
+  if (!template) return template;
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return data[key] !== undefined ? data[key] : match;
+  });
+};
+
+/**
+ * 获取邮件模板（支持自定义模板）
+ * @param {string} templateId - 模板ID
+ * @param {object} data - 模板变量数据
+ * @param {object} customTemplates - 自定义模板配置
+ * @returns {object} - { subject, html, text }
+ */
+const getEmailTemplate = (templateId, data, customTemplates = {}) => {
+  // 默认模板
+  const defaultTemplates = {
+    test: {
+      subject: 'Mio日记系统 - 测试邮件',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6366f1;">Mio日记系统</h2>
+          <p>这是一封测试邮件。</p>
+          <p>如果您收到这封邮件，说明您的SMTP配置正确！</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}<br>
+            系统: Mio日记系统 v2.1.0
+          </p>
+        </div>
+      `,
+      text: '这是一封测试邮件。如果您收到这封邮件，说明您的SMTP配置正确！'
+    },
+    verification: {
+      subject: 'Mio日记系统 - 邮箱验证',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6366f1;">Mio日记系统</h2>
+          <p>您好，{{username}}！</p>
+          <p>感谢您注册 Mio日记系统。请使用以下验证码完成邮箱验证：</p>
+          <div style="background: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
+            <span style="font-size: 32px; font-weight: bold; color: #6366f1; letter-spacing: 8px;">{{code}}</span>
+          </div>
+          <p>验证码有效期为 30 分钟。</p>
+          <p>如果这不是您的操作，请忽略此邮件。</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}<br>
+            系统: Mio日记系统 v2.1.0
+          </p>
+        </div>
+      `,
+      text: '您好！您的邮箱验证码是：{{code}}，有效期30分钟。'
+    },
+    passwordReset: {
+      subject: 'Mio日记系统 - 密码重置',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6366f1;">Mio日记系统</h2>
+          <p>您好，{{username}}！</p>
+          <p>您申请了密码重置。请使用以下验证码：</p>
+          <div style="background: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
+            <span style="font-size: 32px; font-weight: bold; color: #6366f1; letter-spacing: 8px;">{{code}}</span>
+          </div>
+          <p>验证码有效期为 30 分钟。</p>
+          <p>如果这不是您的操作，请立即修改密码以确保账户安全。</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}<br>
+            系统: Mio日记系统 v2.1.0
+          </p>
+        </div>
+      `,
+      text: '您好！您的密码重置验证码是：{{code}}，有效期30分钟。'
+    },
+    diaryReview: {
+      subject: 'Mio日记系统 - 日记审核通知',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6366f1;">Mio日记系统</h2>
+          <p>您好，{{username}}！</p>
+          <p>您的日记《{{diaryTitle}}》审核已完成。</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}<br>
+            系统: Mio日记系统 v2.1.0
+          </p>
+        </div>
+      `,
+      text: '您的日记《{{diaryTitle}}》审核已完成。'
+    },
+    accountStatus: {
+      subject: 'Mio日记系统 - 账户状态变更通知',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6366f1;">Mio日记系统</h2>
+          <p>您好，{{username}}！</p>
+          <p>您的账户状态已变更。</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}<br>
+            系统: Mio日记系统 v2.1.0
+          </p>
+        </div>
+      `,
+      text: '您的账户状态已变更。'
+    }
+  };
+
+  // 获取自定义模板（如果有）
+  const customTemplate = customTemplates[templateId] || {};
+  
+  // 合并模板：自定义模板优先
+  const template = {
+    subject: customTemplate.subject || defaultTemplates[templateId]?.subject || 'Mio日记系统通知',
+    html: customTemplate.content || defaultTemplates[templateId]?.html || '',
+    text: defaultTemplates[templateId]?.text || ''
+  };
+
+  // 替换变量
+  return {
+    subject: replaceTemplateVariables(template.subject, data),
+    html: replaceTemplateVariables(template.html, data),
+    text: replaceTemplateVariables(template.text, data)
+  };
+};
+
+/**
+ * 邮件模板（向后兼容的导出）
  */
 const emailTemplates = {
-  /**
-   * 测试邮件模板
-   */
-  test: (data) => ({
-    subject: 'Mio日记系统 - 测试邮件',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #6366f1;">Mio日记系统</h2>
-        <p>这是一封测试邮件。</p>
-        <p>如果您收到这封邮件，说明您的SMTP配置正确！</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px;">
-          发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.2
-        </p>
-      </div>
-    `,
-    text: '这是一封测试邮件。如果您收到这封邮件，说明您的SMTP配置正确！'
-  }),
-
-  /**
-   * 邮箱验证邮件模板
-   */
-  verification: (data) => ({
-    subject: 'Mio日记系统 - 邮箱验证',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #6366f1;">Mio日记系统</h2>
-        <p>您好，${data.username || '用户'}！</p>
-        <p>感谢您注册 Mio日记系统。请使用以下验证码完成邮箱验证：</p>
-        <div style="background: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
-          <span style="font-size: 32px; font-weight: bold; color: #6366f1; letter-spacing: 8px;">${data.code}</span>
-        </div>
-        <p>验证码有效期为 30 分钟。</p>
-        <p>如果这不是您的操作，请忽略此邮件。</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px;">
-          发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.2
-        </p>
-      </div>
-    `,
-    text: `您好！您的邮箱验证码是：${data.code}，有效期30分钟。`
-  }),
-
-  /**
-   * 密码重置邮件模板
-   */
-  passwordReset: (data) => ({
-    subject: 'Mio日记系统 - 密码重置',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #6366f1;">Mio日记系统</h2>
-        <p>您好，${data.username || '用户'}！</p>
-        <p>您申请了密码重置。请使用以下验证码：</p>
-        <div style="background: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
-          <span style="font-size: 32px; font-weight: bold; color: #6366f1; letter-spacing: 8px;">${data.code}</span>
-        </div>
-        <p>验证码有效期为 30 分钟。</p>
-        <p>如果这不是您的操作，请立即修改密码以确保账户安全。</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px;">
-          发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.2
-        </p>
-      </div>
-    `,
-    text: `您好！您的密码重置验证码是：${data.code}，有效期30分钟。`
-  }),
-
-  /**
-   * 日记审核通知模板
-   */
-  diaryReview: (data) => ({
-    subject: `Mio日记系统 - 日记${data.status === 'approved' ? '已通过审核' : '审核未通过'}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #6366f1;">Mio日记系统</h2>
-        <p>您好，${data.username || '用户'}！</p>
-        ${data.status === 'approved' ? `
-          <p>恭喜！您的日记《${data.diaryTitle}》已通过审核。</p>
-          <p>现在其他用户可以看到您的日记了。</p>
-        ` : `
-          <p>您的日记《${data.diaryTitle}》审核未通过。</p>
-          <p>原因：${data.reason || '内容不符合社区规范'}</p>
-          <p>您可以修改后重新提交。</p>
-        `}
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px;">
-          发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.2
-        </p>
-      </div>
-    `,
-    text: data.status === 'approved' 
-      ? `您的日记《${data.diaryTitle}》已通过审核。`
-      : `您的日记《${data.diaryTitle}》审核未通过。原因：${data.reason || '内容不符合社区规范'}`
-  }),
-
-  /**
-   * 账户状态变更通知模板
-   */
-  accountStatus: (data) => ({
-    subject: 'Mio日记系统 - 账户状态变更通知',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #6366f1;">Mio日记系统</h2>
-        <p>您好，${data.username || '用户'}！</p>
-        ${data.status === 'banned' ? `
-          <p style="color: #dc2626;">您的账户已被封禁。</p>
-          <p>原因：${data.reason || '违反社区规范'}</p>
-          <p>如有疑问，请联系管理员。</p>
-        ` : `
-          <p style="color: #16a34a;">您的账户已解封。</p>
-          <p>现在您可以正常使用所有功能了。</p>
-        `}
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 12px;">
-          发送时间: ${new Date().toLocaleString('zh-CN')}<br>
-          系统: Mio日记系统 v2.0.2
-        </p>
-      </div>
-    `,
-    text: data.status === 'banned'
-      ? `您的账户已被封禁。原因：${data.reason || '违反社区规范'}`
-      : '您的账户已解封。'
-  })
+  test: (data) => getEmailTemplate('test', data),
+  verification: (data) => getEmailTemplate('verification', data),
+  passwordReset: (data) => getEmailTemplate('passwordReset', data),
+  diaryReview: (data) => getEmailTemplate('diaryReview', data),
+  accountStatus: (data) => getEmailTemplate('accountStatus', data)
 };
 
 /**
  * 发送邮件
- * @param {string} to - 收件人邮箱
+ * 支持两种调用方式：
+ * 1. 模板方式：sendEmail(to, template, data, options)
+ * 2. 直接方式：sendEmail({ to, subject, html, text })
+ * @param {string|object} to - 收件人邮箱 或 邮件选项对象
  * @param {string} template - 邮件模板名称
  * @param {object} data - 模板数据
  * @param {object} options - 额外选项
  */
 const sendEmail = async (to, template, data = {}, options = {}) => {
   try {
-    // 检查邮件功能是否启用
+    // 支持对象参数方式调用：sendEmail({ to, subject, html })
+    if (typeof to === 'object' && to !== null) {
+      const emailOptions = to;
+      to = emailOptions.to;
+      template = null;
+      data = {};
+      options = {
+        subject: emailOptions.subject,
+        html: emailOptions.html,
+        text: emailOptions.text
+      };
+    }
+
+    // 检查邮件功能是否启用，并获取自定义模板配置
     const config = await getEmailConfig();
     if (!config.smtp || !config.smtp.host) {
       throw new Error('SMTP未配置');
     }
 
-    // 获取邮件模板
-    const templateFn = emailTemplates[template];
-    if (!templateFn) {
-      throw new Error(`邮件模板 '${template}' 不存在`);
+    // 获取邮件内容
+    let emailContent;
+    if (template) {
+      // 使用模板
+      emailContent = getEmailTemplate(template, data, config.emailTemplates);
+    } else {
+      // 直接使用 options 中的内容
+      emailContent = {
+        subject: options.subject || 'Mio日记系统通知',
+        html: options.html || '',
+        text: options.text || ''
+      };
     }
-
-    const emailContent = templateFn(data);
     
     // 创建传输器
     const transporter = await createTransporter();
@@ -252,7 +332,7 @@ const sendEmail = async (to, template, data = {}, options = {}) => {
       previewUrl: nodemailer.getTestMessageUrl(info)
     };
   } catch (error) {
-    console.error(`[邮件发送失败] ${to}:`, error.message);
+    console.error(`[邮件发送失败] ${typeof to === 'string' ? to : to?.to}:`, error.message);
     throw error;
   }
 };
@@ -271,10 +351,13 @@ const verifySMTPConfig = async (smtpConfig) => {
         pass: smtpConfig.pass
       },
       tls: {
-        rejectUnauthorized: false
+        // 生产环境必须验证证书，开发环境可通过环境变量临时禁用
+        rejectUnauthorized: process.env.NODE_ENV === 'production'
+          ? true
+          : (process.env.EMAIL_REJECT_UNAUTHORIZED !== 'false')
       }
     });
-    
+
     await transporter.verify();
     return { success: true, message: 'SMTP配置验证成功' };
   } catch (error) {
@@ -294,5 +377,7 @@ module.exports = {
   verifySMTPConfig,
   generateVerificationCode,
   getEmailConfig,
-  emailTemplates
+  emailTemplates,
+  getEmailTemplate,
+  replaceTemplateVariables
 };

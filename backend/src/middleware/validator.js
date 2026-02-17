@@ -3,6 +3,39 @@
  * 提供统一的请求参数验证功能
  */
 
+const prisma = require('../config/database');
+
+// 默认配置值
+const DEFAULT_MAX_DIARY_LENGTH = 100000; // 10万字默认
+
+/**
+ * 从数据库获取日记长度限制配置
+ * @returns {Promise<number>}
+ */
+const getMaxDiaryLength = async () => {
+  try {
+    const config = await prisma.systemConfig.findUnique({
+      where: { key: 'maxDiaryLength' }
+    });
+
+    if (config?.value) {
+      try {
+        const length = JSON.parse(config.value);
+        if (typeof length === 'number' && length > 0) {
+          return length;
+        }
+      } catch (e) {
+        console.warn('解析 maxDiaryLength 配置失败，使用默认值:', e.message);
+      }
+    }
+
+    return DEFAULT_MAX_DIARY_LENGTH;
+  } catch (error) {
+    console.error('获取日记长度配置失败:', error.message);
+    return DEFAULT_MAX_DIARY_LENGTH;
+  }
+};
+
 /**
  * 电子邮件验证正则
  */
@@ -185,10 +218,13 @@ const validateUsername = (req, res, next) => {
 /**
  * 验证日记数据
  */
-const validateDiary = (req, res, next) => {
+const validateDiary = async (req, res, next) => {
   const { title, content, mood, tags, images } = req.body;
 
   const errors = [];
+
+  // 异步获取配置
+  const maxDiaryLength = await getMaxDiaryLength();
 
   // 根据请求方法判断是创建还是更新
   const isCreateRequest = req.method === 'POST';
@@ -230,8 +266,8 @@ const validateDiary = (req, res, next) => {
       const textContent = content.replace(/<[^>]*>/g, '').trim();
       if (!textContent) {
         errors.push('内容不能为空，请输入一些文本');
-      } else if (content.length > 100000) {
-        errors.push('内容不能超过 100000 个字符');
+      } else if (content.length > maxDiaryLength) {
+        errors.push(`内容不能超过 ${maxDiaryLength.toLocaleString()} 个字符`);
       }
     }
   } else if (content !== undefined && content !== null) {
@@ -242,8 +278,8 @@ const validateDiary = (req, res, next) => {
       const textContent = content.replace(/<[^>]*>/g, '').trim();
       if (!textContent) {
         errors.push('内容不能为空，请输入一些文本');
-      } else if (content.length > 100000) {
-        errors.push('内容不能超过 100000 个字符');
+      } else if (content.length > maxDiaryLength) {
+        errors.push(`内容不能超过 ${maxDiaryLength.toLocaleString()} 个字符`);
       }
     }
   }
@@ -378,4 +414,6 @@ module.exports = {
   validateDiary,
   validateChangePassword,
   validateUpdateProfile,
+  getMaxDiaryLength,
+  DEFAULT_MAX_DIARY_LENGTH,
 };

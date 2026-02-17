@@ -1,6 +1,6 @@
 {
     "name": "backend",
-    "version": "2.0.2",
+    "version": "2.1.0",
     "description": "Mio的日记本 - 后端API",
     "main": "src/server.js",
     "scripts": {
@@ -16,11 +16,14 @@
     "type": "commonjs",
     "dependencies": {
         "@prisma/client": "^6.2.1",
+        "axios": "^1.13.5",
         "bcryptjs": "^2.4.3",
         "compression": "^1.8.1",
         "cors": "^2.8.5",
         "dotenv": "^16.4.7",
         "express": "^4.21.2",
+        "ioredis": "^5.4.2",
+        "isomorphic-dompurify": "^3.0.0-rc.2",
         "jsonwebtoken": "^9.0.2",
         "multer": "^2.0.0-rc.4",
         "nodemailer": "^8.0.1",

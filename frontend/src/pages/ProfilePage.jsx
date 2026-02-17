@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { User, Calendar, BookOpen, Smile, Clock, Settings, Edit3, Image as ImageIcon, Lock } from 'lucide-react';
 import api, { getImageUrl } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import Header from '../components/layout/Header';
 
 const ProfilePage = () => {
   const { username } = useParams();
+  const toast = useToast();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [backgroundError, setBackgroundError] = useState(false);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ const ProfilePage = () => {
       setProfile(response.data.user);
       setBackgroundError(false);
     } catch (err) {
-      setError(err.response?.data?.message || '获取用户信息失败');
+      toast.error(err.response?.data?.message || '获取用户信息失败');
     } finally {
       setLoading(false);
     }
@@ -61,8 +62,7 @@ const ProfilePage = () => {
   };
 
   if (loading) return <LoadingSpinner size="large" />;
-  if (error) return <ErrorMessage message={error} />;
-  if (!profile) return <ErrorMessage message="用户不存在" />;
+  if (!profile) return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"><Header /><div className="text-center py-12 text-gray-500">用户不存在</div></div>;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

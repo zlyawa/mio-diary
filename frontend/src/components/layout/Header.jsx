@@ -5,7 +5,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { useConfig } from '../../context/ConfigContext';
 import { getImageUrl } from '../../utils/api';
 import api from '../../utils/api';
-import { Moon, Sun, LogOut, User, BookOpen, Menu, X, Home, LayoutDashboard, Settings, PenTool, Bell, ChevronDown } from 'lucide-react';
+import { Moon, Sun, LogOut, User, BookOpen, Menu, X, Home, LayoutDashboard, Settings, PenTool, Bell, ChevronDown, BarChart3, Folder, Bookmark, MessageCircle } from 'lucide-react';
+import AnnouncementBanner from '../common/AnnouncementBanner';
 
 /**
  * 导航菜单项配置
@@ -15,6 +16,8 @@ const NAV_ITEMS = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
   { path: '/diaries', label: '日记列表', icon: BookOpen },
   { path: '/diaries/new', label: '写日记', icon: PenTool },
+  { path: '/categories', label: '分类', icon: Folder },
+  { path: '/stats', label: '统计', icon: BarChart3 },
   { path: '/notifications', label: '通知', icon: Bell },
   { path: '/settings', label: '设置', icon: Settings },
 ];
@@ -26,7 +29,7 @@ const NAV_ITEMS = [
 const Header = () => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { siteName, siteIcon } = useConfig();
+  const { siteName, siteIcon, enableStatistics } = useConfig();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -36,6 +39,7 @@ const Header = () => {
   const [navMenuOpen, setNavMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const navMenuRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   /**
    * 处理滚动效果
@@ -55,10 +59,22 @@ const Header = () => {
   useEffect(() => {
     const fetchUnreadCount = async () => {
       if (!user) return;
+      
+      // 取消之前的请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      
       try {
-        const response = await api.get('/notifications/unread-count');
+        const response = await api.get('/notifications/unread-count', {
+          signal: abortControllerRef.current.signal
+        });
         setUnreadNotifications(response.data.count);
       } catch (error) {
+        if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+          return; // 忽略取消的请求
+        }
         console.error('获取未读通知数量失败:', error);
       }
     };
@@ -66,7 +82,13 @@ const Header = () => {
     fetchUnreadCount();
     // 每隔30秒刷新一次
     const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // 组件卸载时取消请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [user]);
 
   /**
@@ -123,6 +145,7 @@ const Header = () => {
   };
 
   return (
+    <>
     <header 
       className={`sticky top-0 z-50 transition-all duration-300 ${
         scrolled 
@@ -192,7 +215,7 @@ const Header = () => {
                   {/* 导航下拉菜单 */}
                   {navMenuOpen && (
                     <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-                      {NAV_ITEMS.map((item) => (
+                      {NAV_ITEMS.filter(item => item.path !== '/stats' || enableStatistics).map((item) => (
                         <Link
                           key={item.path}
                           to={item.path}
@@ -293,6 +316,26 @@ const Header = () => {
                       </button>
                       <button
                         onClick={() => {
+                          navigate('/favorites');
+                          setUserMenuOpen(false);
+                        }}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Bookmark className="w-4 h-4" />
+                        <span>我的收藏</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigate('/my-comments');
+                          setUserMenuOpen(false);
+                        }}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>我的评论</span>
+                      </button>
+                      <button
+                        onClick={() => {
                           navigate('/settings');
                           setUserMenuOpen(false);
                         }}
@@ -338,7 +381,7 @@ const Header = () => {
         {mobileMenuOpen && user && (
           <nav className="md:hidden pb-4 border-t border-gray-200 dark:border-gray-700 mt-4">
             <div className="flex flex-col space-y-1 py-4">
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.filter(item => item.path !== '/stats' || enableStatistics).map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
@@ -399,6 +442,24 @@ const Header = () => {
                 </Link>
               )}
 
+              {/* 我的收藏和评论（移动端） */}
+              <Link
+                to="/favorites"
+                onClick={closeMobileMenu}
+                className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+              >
+                <Bookmark className="w-5 h-5" />
+                <span className="font-medium">我的收藏</span>
+              </Link>
+              <Link
+                to="/my-comments"
+                onClick={closeMobileMenu}
+                className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                <span className="font-medium">我的评论</span>
+              </Link>
+
               {/* 登出按钮（移动端） */}
               <button
                 onClick={() => {
@@ -415,6 +476,8 @@ const Header = () => {
         )}
       </div>
     </header>
+    <AnnouncementBanner />
+  </>
   );
 };
 

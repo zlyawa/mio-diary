@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Calendar, Tag, Filter, Grid3X3, List, Trash2, X, ChevronDown } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, Plus, Calendar, Tag, Filter, Grid3X3, List, Trash2, X, ChevronDown, Folder } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
 import Skeleton from '../components/common/Skeleton';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import api from '../utils/api';
+import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { getImageUrl } from '../utils/api';
 
 /**
@@ -70,12 +72,17 @@ const useDebounce = (value, delay) => {
  */
 const DiaryList = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const toast = useToast();
+  const { isAuthenticated } = useAuth();
   const [diaries, setDiaries] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [moodFilter, setMoodFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get('categoryId') || '');
+  const [categories, setCategories] = useState([]);
   const [sortBy, setSortBy] = useState('createdAt-desc');
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState('list');
@@ -123,8 +130,13 @@ const DiaryList = () => {
    * 获取日记列表
    */
   const fetchDiaries = useCallback(async () => {
+    // 未登录时不请求
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
-    setError('');
     try {
       const [sortField, sortOrder] = sortBy.split('-');
       const params = { 
@@ -134,6 +146,7 @@ const DiaryList = () => {
       };
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (moodFilter) params.mood = moodFilter;
+      if (categoryFilter) params.categoryId = categoryFilter;
 
       const response = await api.get('/diaries', { params });
       setDiaries(response.data.diaries || []);
@@ -141,13 +154,31 @@ const DiaryList = () => {
       setSelectedDiaries([]);
     } catch (err) {
       console.error('获取日记列表失败:', err);
-      setError('获取日记列表失败，请稍后重试');
+      // 认证错误静默处理，不显示错误提示
+      if (!err.isAuthError) {
+        toast.error('获取日记列表失败，请稍后重试');
+      }
       setDiaries([]);
       setPagination(null);
     } finally {
       setIsLoading(false);
     }
-  }, [page, debouncedSearchTerm, moodFilter, sortBy]);
+  }, [page, debouncedSearchTerm, moodFilter, categoryFilter, sortBy, toast, isAuthenticated]);
+
+  /**
+   * 获取分类列表
+   */
+  const fetchCategories = useCallback(async () => {
+    // 未登录时不请求
+    if (!isAuthenticated) return;
+    
+    try {
+      const response = await api.get('/categories');
+      setCategories(response.data.categories || []);
+    } catch (err) {
+      console.error('获取分类失败:', err);
+    }
+  }, [isAuthenticated]);
 
   /**
    * 删除选中日记
@@ -164,11 +195,12 @@ const DiaryList = () => {
       await Promise.all(
         selectedDiaries.map(id => api.delete(`/diaries/${id}`))
       );
+      toast.success(`成功删除 ${selectedDiaries.length} 篇日记`);
       setSelectedDiaries([]);
       await fetchDiaries();
     } catch (err) {
       console.error('删除日记失败:', err);
-      setError('删除日记失败，请稍后重试');
+      toast.error('删除日记失败，请稍后重试');
     } finally {
       setIsDeleting(false);
     }
@@ -203,6 +235,7 @@ const DiaryList = () => {
   const clearFilters = () => {
     setSearchTerm('');
     setMoodFilter('');
+    setCategoryFilter('');
     setSortBy('createdAt-desc');
     setPage(1);
   };
@@ -214,6 +247,10 @@ const DiaryList = () => {
     const filters = [];
     if (searchTerm) filters.push(`搜索: "${searchTerm}"`);
     if (moodFilter) filters.push(`心情: ${getMoodLabel(moodFilter)}`);
+    if (categoryFilter) {
+      const categoryName = getCategoryNameById(categoryFilter);
+      filters.push(`分类: ${categoryName}`);
+    }
     if (sortBy !== 'createdAt-desc') {
       const sortOption = SORT_OPTIONS.find(s => s.value === sortBy);
       if (sortOption) filters.push(`排序: ${sortOption.label}`);
@@ -221,9 +258,27 @@ const DiaryList = () => {
     return filters.join(' | ');
   };
 
+  /**
+   * 根据ID获取分类名称
+   */
+  const getCategoryNameById = (id) => {
+    const findName = (cats) => {
+      for (const cat of cats) {
+        if (cat.id === id) return cat.name;
+        if (cat.children) {
+          const found = findName(cat.children);
+          if (found) return found;
+        }
+      }
+      return '未知分类';
+    };
+    return findName(categories);
+  };
+
   useEffect(() => {
     fetchDiaries();
-  }, [fetchDiaries]);
+    fetchCategories();
+  }, [fetchDiaries, fetchCategories]);
 
   /**
    * 渲染日记卡片（列表视图）
@@ -294,6 +349,25 @@ const DiaryList = () => {
               className="text-gray-600 dark:text-gray-300 line-clamp-2 text-sm"
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(diary.content) }}
             />
+
+            {/* 分类和标签 */}
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              {/* 分类 */}
+              {diary.category && (
+                <div className="flex items-center gap-1.5">
+                  <Folder size={14} className="text-gray-400" />
+                  <span
+                    className="px-2 py-0.5 text-xs rounded-full font-medium"
+                    style={{
+                      backgroundColor: diary.category.color ? `${diary.category.color}20` : '#E5E7EB',
+                      color: diary.category.color || '#374151',
+                    }}
+                  >
+                    {diary.category.name}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {/* 标签 */}
             {diary.tags && diary.tags.length > 0 && (
@@ -489,6 +563,23 @@ const DiaryList = () => {
                 ))}
               </select>
 
+              {/* 分类筛选 */}
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">📁 所有分类</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+
               {/* 排序 */}
               <select
                 value={sortBy}
@@ -506,7 +597,7 @@ const DiaryList = () => {
               </select>
 
               {/* 清除筛选 */}
-              {(searchTerm || moodFilter || sortBy !== 'createdAt-desc') && (
+              {(searchTerm || moodFilter || categoryFilter || sortBy !== 'createdAt-desc') && (
                 <button
                   type="button"
                   onClick={clearFilters}
@@ -518,7 +609,7 @@ const DiaryList = () => {
             </div>
 
             {/* 筛选状态 */}
-            {(searchTerm || moodFilter || sortBy !== 'createdAt-desc') && (
+            {(searchTerm || moodFilter || categoryFilter || sortBy !== 'createdAt-desc') && (
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Filter size={14} />
                 <span>当前筛选: {getFilterStatusText()}</span>
@@ -553,7 +644,7 @@ const DiaryList = () => {
         )}
 
         {/* 错误提示 */}
-        <ErrorMessage message={error} />
+        {/* <ErrorMessage message={error} /> */}
 
         {/* 加载状态 */}
         {isLoading ? (

@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Save, ArrowLeft, Clock, AlertCircle } from 'lucide-react';
+import { Save, ArrowLeft, Clock, AlertCircle, Folder } from 'lucide-react';
 import api from '../utils/api';
 import { useConfig } from '../context/ConfigContext';
+import { useToast } from '../context/ToastContext';
 import Header from '../components/layout/Header';
 import QuillEditor from '../components/diary/QuillEditor';
 import MoodSelector from '../components/diary/MoodSelector';
 import TagInput from '../components/diary/TagInput';
 import ImageUploader from '../components/diary/ImageUploader';
-import ErrorMessage from '../components/common/ErrorMessage';
+import CategorySelector from '../components/diary/CategorySelector';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 /**
@@ -54,6 +56,7 @@ const DiaryForm = () => {
   const { id } = useParams();
   const isEditing = !!id;
   const { enableReview } = useConfig();
+  const toast = useToast();
 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +69,7 @@ const DiaryForm = () => {
   const [mood, setMood] = useState('neutral');
   const [tags, setTags] = useState([]);
   const [images, setImages] = useState([]);
+  const [categoryId, setCategoryId] = useState('');
   
   const autoSaveTimerRef = useRef(null);
   const saveStatusTimeoutRef = useRef(null);
@@ -89,7 +93,6 @@ const DiaryForm = () => {
    */
   const fetchDiary = useCallback(async () => {
     setIsFetching(true);
-    setError('');
     try {
       const response = await api.get(`/diaries/${id}`);
       const diary = response.data.diary;
@@ -98,13 +101,14 @@ const DiaryForm = () => {
       setMood(diary.mood || 'neutral');
       setTags(Array.isArray(diary.tags) ? diary.tags : []);
       setImages(Array.isArray(diary.images) ? diary.images : []);
+      setCategoryId(diary.categoryId || '');
       
       reset({
         title: diary.title || '',
       });
     } catch (err) {
       console.error('获取日记失败:', err);
-      setError(err.response?.data?.error || err.response?.data?.message || '获取日记失败');
+      toast.error(err.response?.data?.error || err.response?.data?.message || '获取日记失败');
     } finally {
       setIsFetching(false);
     }
@@ -122,6 +126,7 @@ const DiaryForm = () => {
         setMood(draftData.mood || 'neutral');
         setTags(draftData.tags || []);
         setImages(draftData.images || []);
+        setCategoryId(draftData.categoryId || '');
         reset({
           title: draftData.title || '',
         });
@@ -143,6 +148,7 @@ const DiaryForm = () => {
         mood,
         tags,
         images,
+        categoryId,
         timestamp: Date.now(),
       };
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData));
@@ -150,7 +156,7 @@ const DiaryForm = () => {
     } catch (err) {
       console.error('保存草稿失败:', err);
     }
-  }, [watchedTitle, content, mood, tags, images]);
+  }, [watchedTitle, content, mood, tags, images, categoryId]);
 
   /**
    * 清除草稿
@@ -167,7 +173,7 @@ const DiaryForm = () => {
    * 自动保存
    */
   const autoSave = useCallback(() => {
-    if (!isEditing && (watchedTitle || content || tags.length > 0 || images.length > 0)) {
+    if (!isEditing && (watchedTitle || content || tags.length > 0 || images.length > 0 || categoryId)) {
       setIsAutoSaving(true);
       saveDraft();
       
@@ -179,26 +185,25 @@ const DiaryForm = () => {
         setIsAutoSaving(false);
       }, 2000);
     }
-  }, [isEditing, watchedTitle, content, tags, images, saveDraft]);
+  }, [isEditing, watchedTitle, content, tags, images, categoryId, saveDraft]);
 
   /**
    * 提交表单
    */
   const onSubmit = async (data) => {
-    setError('');
     setIsLoading(true);
 
     try {
       // 验证标题
       if (!data.title || data.title.trim() === '') {
-        setError('标题不能为空');
+        toast.error('标题不能为空');
         setIsLoading(false);
         return;
       }
 
       // 验证内容 - 使用可靠的 DOM 解析判断空内容
       if (isContentEmpty(content)) {
-        setError('内容不能为空，请输入一些文本');
+        toast.error('内容不能为空，请输入一些文本');
         setIsLoading(false);
         return;
       }
@@ -211,6 +216,7 @@ const DiaryForm = () => {
         mood,
         tags,
         images,
+        categoryId,
       });
 
       const diaryData = {
@@ -219,25 +225,28 @@ const DiaryForm = () => {
         mood,
         tags,
         images,
+        categoryId: categoryId || null,
       };
 
       if (isEditing) {
         await api.put(`/diaries/${id}`, diaryData);
+        toast.success('日记更新成功');
       } else {
         await api.post('/diaries', diaryData);
         clearDraft();
-      }
-
-      // 根据系统配置决定提示信息和跳转
-      if (!isEditing && enableReview) {
-        alert('日记已提交，等待管理员审核通过后将对外可见');
+        // 根据系统配置决定提示信息
+        if (enableReview) {
+          toast.info('日记已提交，等待管理员审核通过后将对外可见');
+        } else {
+          toast.success('日记保存成功');
+        }
       }
 
       navigate(isEditing ? `/diaries/${id}` : '/diaries');
     } catch (err) {
       console.error('保存日记失败:', err);
       const errorMsg = err.response?.data?.message || err.response?.data?.error || '保存失败，请重试';
-      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -381,7 +390,7 @@ const DiaryForm = () => {
         {/* 表单卡片 */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 sm:p-8">
           {/* 错误提示 */}
-          <ErrorMessage message={error} />
+          {/* <ErrorMessage message={error} /> */}
 
           {/* 未保存更改提示 */}
           {hasUnsavedChanges && (
@@ -451,6 +460,22 @@ const DiaryForm = () => {
               <MoodSelector 
                 selected={mood} 
                 onSelect={setMood}
+                disabled={isLoading || isFetching}
+              />
+            </div>
+
+            {/* 分类选择 */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span className="flex items-center gap-2">
+                  <Folder size={16} />
+                  分类
+                  <span className="text-gray-400 font-normal">(可选)</span>
+                </span>
+              </label>
+              <CategorySelector
+                value={categoryId}
+                onChange={setCategoryId}
                 disabled={isLoading || isFetching}
               />
             </div>

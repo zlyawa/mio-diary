@@ -1,7 +1,108 @@
 const prisma = require('../config/database');
 const notification = require('../utils/notification');
+const DOMPurify = require('isomorphic-dompurify');
 
 const MOODS = ['happy', 'sad', 'excited', 'calm', 'anxious', 'angry', 'neutral'];
+
+/**
+ * 获取内容过滤配置
+ * @returns {Object} 配置对象
+ */
+const getContentFilterConfig = async () => {
+  try {
+    const configs = await prisma.systemConfig.findMany({
+      where: {
+        key: {
+          in: ['enableContentFilter', 'sensitiveWords']
+        }
+      }
+    });
+
+    const configMap = {};
+    configs.forEach((config) => {
+      try {
+        configMap[config.key] = JSON.parse(config.value);
+      } catch {
+        configMap[config.key] = config.value;
+      }
+    });
+
+    return {
+      enableContentFilter: configMap.enableContentFilter ?? false,
+      sensitiveWords: configMap.sensitiveWords ?? ['暴力', '色情', '政治', '赌博', '毒品']
+    };
+  } catch (error) {
+    console.error('[内容过滤] 获取配置失败:', error.message);
+    return {
+      enableContentFilter: false,
+      sensitiveWords: ['暴力', '色情', '政治', '赌博', '毒品']
+    };
+  }
+};
+
+/**
+ * 敏感词检查
+ * @param {string} content - 需要检查的内容
+ * @param {string[]} sensitiveWords - 敏感词列表
+ * @returns {Object} 检查结果 { hasSensitiveWord: boolean, matchedWords: string[] }
+ */
+const checkSensitiveWords = (content, sensitiveWords) => {
+  if (!content || !sensitiveWords || sensitiveWords.length === 0) {
+    return { hasSensitiveWord: false, matchedWords: [] };
+  }
+
+  const matchedWords = [];
+  const lowerContent = content.toLowerCase();
+
+  for (const word of sensitiveWords) {
+    if (!word) continue;
+    const lowerWord = word.toLowerCase();
+    if (lowerContent.includes(lowerWord)) {
+      matchedWords.push(word);
+    }
+  }
+
+  return {
+    hasSensitiveWord: matchedWords.length > 0,
+    matchedWords
+  };
+};
+
+/**
+ * 检查日记内容是否包含敏感词
+ * @param {string} title - 日记标题
+ * @param {string} content - 日记内容
+ * @returns {Object|null} 如果包含敏感词返回错误对象，否则返回null
+ */
+const checkDiarySensitiveWords = async (title, content) => {
+  const config = await getContentFilterConfig();
+
+  if (!config.enableContentFilter) {
+    return null;
+  }
+
+  // 检查标题
+  const titleCheck = checkSensitiveWords(title, config.sensitiveWords);
+  if (titleCheck.hasSensitiveWord) {
+    return {
+      error: 'ContentFilterError',
+      message: `标题包含敏感词: ${titleCheck.matchedWords.join(', ')}`,
+      matchedWords: titleCheck.matchedWords
+    };
+  }
+
+  // 检查内容
+  const contentCheck = checkSensitiveWords(content, config.sensitiveWords);
+  if (contentCheck.hasSensitiveWord) {
+    return {
+      error: 'ContentFilterError',
+      message: `内容包含敏感词: ${contentCheck.matchedWords.join(', ')}`,
+      matchedWords: contentCheck.matchedWords
+    };
+  }
+
+  return null;
+};
 
 const safeJsonParse = (str, defaultValue = []) => {
   try {
@@ -63,20 +164,24 @@ const cleanTitle = (title) => {
 
 /**
  * 清理内容数据
- * 注意：验证逻辑已在 validator.js 中完成
- * 对于富文本内容，不进行HTML转义，直接保存
+ * 使用DOMPurify进行服务端HTML净化，防止XSS攻击
+ * 允许的标签：p, br, strong, b, em, i, u, h1, h2, h3, ul, ol, li, blockquote, code, pre, a, img
+ * 允许的属性：href, title, target, rel, src, alt
  */
 const cleanContent = (content) => {
   if (!content || typeof content !== 'string') return '';
   // validator 已验证 content 非空且长度在 1-100000 之间
-  // 富文本内容直接保存，不做 trim（因为 HTML 标签开头可能有空格）
-  // 不做任何HTML转义，保持富文本内容完整性
-  return content;
+  // 使用DOMPurify净化HTML内容，防止XSS攻击
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'h1', 'h2', 'h3', 
+                   'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img'],
+    ALLOWED_ATTR: ['href', 'title', 'target', 'rel', 'src', 'alt']
+  });
 };
 
 const createDiary = async (req, res, next) => {
   try {
-    const { title, content, mood, tags, images } = req.body;
+    const { title, content, mood, tags, images, categoryId } = req.body;
 
     // 数据清理（验证已在中间件完成）
     const cleanedTitle = cleanTitle(title);
@@ -84,6 +189,23 @@ const createDiary = async (req, res, next) => {
     const cleanedMood = cleanMood(mood);
     const cleanedTags = cleanTags(tags);
     const cleanedImages = cleanImages(images);
+
+    // XSS过滤后，进行敏感词检查
+    const sensitiveCheckResult = await checkDiarySensitiveWords(cleanedTitle, cleanedContent);
+    if (sensitiveCheckResult) {
+      return res.status(400).json(sensitiveCheckResult);
+    }
+
+    // 验证分类是否存在且属于当前用户
+    let validCategoryId = null;
+    if (categoryId) {
+      const category = await prisma.category.findFirst({
+        where: { id: categoryId, userId: req.user.id },
+      });
+      if (category) {
+        validCategoryId = categoryId;
+      }
+    }
 
     // 获取全局审核开关配置
     const config = await prisma.systemConfig.findUnique({
@@ -104,6 +226,7 @@ const createDiary = async (req, res, next) => {
         images: JSON.stringify(cleanedImages),
         userId: req.user.id,
         status: diaryStatus,
+        categoryId: validCategoryId,
       },
     });
 
@@ -154,9 +277,11 @@ const createDiary = async (req, res, next) => {
   }
 };
 
+const { getAllChildrenIds } = require('./categoryController');
+
 const getDiaries = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, mood, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const { page = 1, limit = 10, mood, search, sortBy = 'createdAt', sortOrder = 'desc', categoryId } = req.query;
     
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
@@ -164,6 +289,19 @@ const getDiaries = async (req, res, next) => {
 
     const validSortBy = ['createdAt', 'updatedAt', 'title'].includes(sortBy) ? sortBy : 'createdAt';
     const validSortOrder = ['asc', 'desc'].includes(sortOrder) ? sortOrder : 'desc';
+
+    // 处理分类筛选（包括子分类）
+    let categoryFilter = {};
+    if (categoryId) {
+      // 获取所有子分类ID
+      const allCategories = await prisma.category.findMany({
+        where: { userId: req.user.id },
+        select: { id: true, parentId: true },
+      });
+      
+      const categoryIds = getAllChildrenIds(allCategories, categoryId);
+      categoryFilter = { categoryId: { in: categoryIds } };
+    }
 
     const where = {
       userId: req.user.id,
@@ -175,6 +313,7 @@ const getDiaries = async (req, res, next) => {
           { tags: { contains: search } },
         ],
       }),
+      ...categoryFilter,
     };
 
     const [diaries, total] = await Promise.all([
@@ -230,7 +369,7 @@ const getDiaryById = async (req, res, next) => {
       });
     }
 
-    // 先获取日记信息，包含关联的用户信息
+    // 先获取日记信息，包含关联的用户信息和分类
     const diary = await prisma.diary.findUnique({
       where: { id },
       include: {
@@ -240,6 +379,13 @@ const getDiaryById = async (req, res, next) => {
             username: true,
             avatarUrl: true,
             diaryPublic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
           },
         },
       },
@@ -306,7 +452,7 @@ const getDiaryById = async (req, res, next) => {
 const updateDiary = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, content, mood, tags, images } = req.body;
+    const { title, content, mood, tags, images, categoryId } = req.body;
 
     if (!id || id.trim().length === 0) {
       return res.status(400).json({
@@ -337,12 +483,40 @@ const updateDiary = async (req, res, next) => {
       updateData.content = cleanContent(content);
     }
 
+    // XSS过滤后，如果标题或内容有更新，进行敏感词检查
+    const titleToCheck = updateData.title !== undefined ? updateData.title : existingDiary.title;
+    const contentToCheck = updateData.content !== undefined ? updateData.content : existingDiary.content;
+    const sensitiveCheckResult = await checkDiarySensitiveWords(titleToCheck, contentToCheck);
+    if (sensitiveCheckResult) {
+      return res.status(400).json(sensitiveCheckResult);
+    }
+
     if (mood !== undefined) {
       updateData.mood = cleanMood(mood);
     }
 
     if (tags !== undefined) {
       updateData.tags = JSON.stringify(cleanTags(tags));
+    }
+
+    // 处理分类更新
+    if (categoryId !== undefined) {
+      if (categoryId === null || categoryId === '') {
+        updateData.categoryId = null;
+      } else {
+        // 验证分类是否存在且属于当前用户
+        const category = await prisma.category.findFirst({
+          where: { id: categoryId, userId: req.user.id },
+        });
+        if (category) {
+          updateData.categoryId = categoryId;
+        } else {
+          return res.status(404).json({
+            error: 'NotFoundError',
+            message: '分类不存在'
+          });
+        }
+      }
     }
 
     // 处理图片更新，需要清理被移除的图片

@@ -114,6 +114,11 @@ api.interceptors.request.use(
     // 添加请求ID到响应头（用于追踪）
     config.headers['X-Request-ID'] = requestId;
 
+    // 如果是 FormData，移除 Content-Type 让浏览器自动设置 boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     // 记录请求日志
     logger.request(config);
 
@@ -194,8 +199,15 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         isRefreshing = false;
+        // 标记为认证错误，页面可以静默处理
+        refreshError.isAuthError = true;
         return Promise.reject(refreshError);
       }
+    }
+
+    // 401 错误（认证失败），标记为静默错误
+    if (error.response?.status === 401) {
+      error.isAuthError = true;
     }
 
     // 处理网络错误
@@ -234,9 +246,6 @@ const requestHelpers = {
   // 文件上传
   upload: (url, formData, onProgress) => {
     return api.post(url, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       onUploadProgress: (progressEvent) => {
         if (onProgress) {
           const percentCompleted = Math.round(

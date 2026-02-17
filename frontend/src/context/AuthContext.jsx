@@ -200,11 +200,11 @@ export const AuthProvider = ({ children }) => {
    * 用户登录
    */
   const login = useCallback(async (credentials) => {
-    console.log('[AuthContext] 开始登录请求');
-    console.log('[AuthContext] 登录凭证:', JSON.stringify({ ...credentials, password: '***' }));
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] 开始登录请求');
+    }
     try {
       const response = await api.post('/auth/login', credentials);
-      console.log('[AuthContext] 登录请求成功:', response.data);
       const { accessToken, refreshToken, user: userData } = response.data;
       
       setTokens(accessToken, refreshToken);
@@ -214,9 +214,9 @@ export const AuthProvider = ({ children }) => {
       
       return response.data;
     } catch (error) {
-      console.error('[AuthContext] 登录请求失败:', error);
-      console.error('[AuthContext] 错误响应:', error.response?.data);
-      console.error('[AuthContext] 错误状态:', error.response?.status);
+      if (import.meta.env.DEV) {
+        console.error('[AuthContext] 登录请求失败:', error.response?.status);
+      }
       throw error;
     }
   }, [setTokens, setupRefreshTimer]);
@@ -225,16 +225,16 @@ export const AuthProvider = ({ children }) => {
    * 用户注册
    */
   const register = useCallback(async (userData) => {
-    console.log('[AuthContext] 开始注册请求');
-    console.log('[AuthContext] 请求数据:', JSON.stringify({ ...userData, password: '***' }));
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] 开始注册请求');
+    }
     try {
       const response = await api.post('/auth/register', userData);
-      console.log('[AuthContext] 注册请求成功:', response.data);
       return response.data;
     } catch (error) {
-      console.error('[AuthContext] 注册请求失败:', error);
-      console.error('[AuthContext] 错误响应:', error.response?.data);
-      console.error('[AuthContext] 错误状态:', error.response?.status);
+      if (import.meta.env.DEV) {
+        console.error('[AuthContext] 注册请求失败:', error.response?.status);
+      }
       throw error;
     }
   }, []);

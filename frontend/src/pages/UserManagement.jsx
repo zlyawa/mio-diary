@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import api, { getImageUrl } from '../utils/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import ErrorMessage from '../components/common/ErrorMessage';
-import SuccessMessage from '../components/common/SuccessMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
+// import SuccessMessage from '../components/common/SuccessMessage';
+import { useToast } from '../context/ToastContext';
 import {
   Search,
   Filter,
@@ -25,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
  */
 const UserManagement = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -70,6 +72,7 @@ const UserManagement = () => {
     } catch (err) {
       console.error('获取用户列表失败:', err);
       setError(err.response?.data?.message || '获取用户列表失败');
+      toast.error(err.response?.data?.message || '获取用户列表失败');
     } finally {
       setLoading(false);
     }
@@ -87,11 +90,11 @@ const UserManagement = () => {
         reason: banReason,
       });
 
-      setSuccess(
-        selectedUser.isBanned
-          ? `用户 "${selectedUser.username}" 已解封`
-          : `用户 "${selectedUser.username}" 已封禁`
-      );
+      const successMsg = selectedUser.isBanned
+        ? `用户 "${selectedUser.username}" 已解封`
+        : `用户 "${selectedUser.username}" 已封禁`;
+      setSuccess(successMsg);
+      toast.success(successMsg);
 
       setShowBanModal(false);
       setBanReason('');
@@ -100,6 +103,7 @@ const UserManagement = () => {
     } catch (err) {
       console.error('封禁用户失败:', err);
       setError(err.response?.data?.message || '操作失败');
+      toast.error(err.response?.data?.message || '操作失败');
     }
   };
 
@@ -114,12 +118,14 @@ const UserManagement = () => {
 
       setResetPassword(response.data.newPassword);
       setSuccess(`用户 "${selectedUser.username}" 的密码已重置`);
+      toast.success(`用户 "${selectedUser.username}" 的密码已重置`);
 
       // 不关闭模态框，显示新密码
       fetchUsers();
     } catch (err) {
       console.error('重置密码失败:', err);
       setError(err.response?.data?.message || '操作失败');
+      toast.error(err.response?.data?.message || '操作失败');
     }
   };
 
@@ -146,29 +152,22 @@ const UserManagement = () => {
 
   if (loading && users.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <LoadingSpinner size="large" />
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
+    <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <Users className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600 dark:text-indigo-400" />
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
-            用户管理
-          </h1>
-        </div>
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          管理系统用户，执行封禁、解封和密码重置操作
-        </p>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户管理</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">管理系统用户，执行封禁、解封和密码重置操作</p>
       </div>
 
-      <ErrorMessage message={error} />
-      <SuccessMessage message={success} />
+      {/* <ErrorMessage message={error} /> */}
+      {/* <SuccessMessage message={success} /> */}
 
       {/* 筛选栏 */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-200 dark:border-gray-700 mb-4 sm:mb-6">

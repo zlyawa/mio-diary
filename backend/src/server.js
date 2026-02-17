@@ -1,16 +1,38 @@
 require('dotenv').config();
 const app = require('./app');
 const prisma = require('./config/database');
+const cacheService = require('./services/cacheService');
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || 'localhost';
 const API_VERSION = 'v1';
+
+// 定期清理过期缓存（每30分钟）
+const startCacheCleanup = () => {
+  const CLEANUP_INTERVAL = 30 * 60 * 1000; // 30分钟
+
+  setInterval(async () => {
+    try {
+      const deletedCount = await cacheService.cleanup();
+      if (deletedCount > 0) {
+        console.log(`[缓存清理] 已清理 ${deletedCount} 条过期缓存`);
+      }
+    } catch (error) {
+      console.error('[缓存清理错误]', error.message);
+    }
+  }, CLEANUP_INTERVAL);
+
+  console.log('✓ 缓存清理任务已启动 (每30分钟)');
+};
 
 const startServer = async () => {
   try {
     await prisma.$connect();
     console.log('✓ 数据库连接成功');
     console.log(`✓ API 版本: ${API_VERSION}`);
+
+    // 启动缓存清理任务
+    startCacheCleanup();
     
     const server = app.listen(PORT, HOST, () => {
       console.log('='.repeat(50));

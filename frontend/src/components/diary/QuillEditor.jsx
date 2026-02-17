@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import ReactQuill from 'react-quill';
+import DOMPurify from 'dompurify';
 import 'react-quill/dist/quill.snow.css';
 
 /**
@@ -54,14 +55,60 @@ const QuillEditor = ({
   const editorRef = useRef(null);
 
   /**
-   * 编辑器模块配置
+   * 编辑器模块配置（带XSS防护）
    */
-  const modules = {
+  const modules = useMemo(() => ({
     toolbar: toolbarOptions,
     clipboard: {
       matchVisual: false,
+      // 自定义粘贴处理，对粘贴内容进行XSS过滤
+      matchers: [
+        // 过滤危险的HTML标签和属性
+        ['script', () => ''],
+        ['iframe', () => ''],
+        ['object', () => ''],
+        ['embed', () => ''],
+        ['form', () => ''],
+      ],
     },
-  };
+  }), []);
+
+  /**
+   * 处理粘贴事件，净化粘贴内容
+   */
+  useEffect(() => {
+    const quill = quillRef.current?.getEditor();
+    if (!quill) return;
+
+    const handlePaste = (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      // 获取HTML内容
+      let html = clipboardData.getData('text/html');
+      if (html) {
+        e.preventDefault();
+        
+        // 使用DOMPurify净化HTML
+        const clean = DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'a', 'img', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'span', 'div'],
+          ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel'],
+          ALLOW_DATA_ATTR: false,
+        });
+        
+        // 插入净化后的内容
+        const selection = quill.getSelection(true);
+        quill.clipboard.dangerouslyPasteHTML(selection.index, clean);
+      }
+    };
+
+    const editorRoot = quill.root;
+    editorRoot.addEventListener('paste', handlePaste, true);
+
+    return () => {
+      editorRoot.removeEventListener('paste', handlePaste, true);
+    };
+  }, []);
 
   /**
    * 处理编辑器内容变化

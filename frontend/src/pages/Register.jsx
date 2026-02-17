@@ -3,10 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
+import { useToast } from '../context/ToastContext';
 import { Eye, EyeOff, Mail, Lock, Check, UserPlus, Sparkles, RefreshCw, Send } from 'lucide-react';
-import ErrorMessage from '../components/common/ErrorMessage';
+// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import api from '../utils/api';
+import { sanitizeText, sanitizeSVG } from '../utils/security';
 
 /**
  * 密码强度等级
@@ -25,6 +27,7 @@ const Register = () => {
   const navigate = useNavigate();
   const { register: registerUser, isAuthenticated, loading } = useAuth();
   const { enableEmailVerify, registerBg, loading: configLoading } = useConfig();
+  const toast = useToast();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -86,18 +89,17 @@ const Register = () => {
   const sendEmailCode = async () => {
     const email = watch('email');
     if (!email) {
-      setError('请先输入邮箱');
+      toast.error('请先输入邮箱');
       return;
     }
 
     const captchaInput = watch('captchaInput');
     if (!captchaInput) {
-      setError('请先输入图片验证码');
+      toast.error('请先输入图片验证码');
       return;
     }
 
     setSendCodeLoading(true);
-    setError('');
     try {
       const response = await api.post('/auth/send-verification-code', { 
         email,
@@ -126,7 +128,7 @@ const Register = () => {
         });
       }, 1000);
     } catch (err) {
-      setError(err.response?.data?.message || '发送验证码失败');
+      toast.error(err.response?.data?.message || '发送验证码失败');
       fetchCaptcha(); // 刷新验证码
     } finally {
       setSendCodeLoading(false);
@@ -217,25 +219,21 @@ const Register = () => {
    * 处理注册提交
    */
   const onSubmit = async (data) => {
-    setError('');
-    
     // 验证图片验证码
     if (!data.captchaInput) {
-      setError('请输入图片验证码');
+      toast.error('请输入图片验证码');
       return;
     }
 
     // 如果启用了邮箱验证，检查邮箱验证码
     if (enableEmailVerify && !emailCode) {
-      setError('请输入邮箱验证码');
+      toast.error('请输入邮箱验证码');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      console.log('[注册] 开始注册流程，数据:', JSON.stringify({ email: data.email, password: '***' }));
-      console.log('[注册] captchaId:', captchaId, 'captchaInput:', data.captchaInput);
       // 传递完整数据，包括验证码
       await registerUser({
         email: data.email,
@@ -244,14 +242,16 @@ const Register = () => {
         captchaInput: data.captchaInput,
         verificationCode: enableEmailVerify ? emailCode : undefined,
       });
-      console.log('[注册] 注册成功');
+      toast.success('注册成功！正在跳转到登录页面...');
       setSuccess(true);
       // 3秒后跳转到登录页
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err) {
-      console.error('[注册] 注册失败:', err);
+      if (import.meta.env.DEV) {
+        console.error('[注册] 注册失败:', err.response?.status);
+      }
       console.error('[注册] 错误详情:', {
         message: err.message,
         response: err.response?.data,
@@ -261,7 +261,7 @@ const Register = () => {
       
       const errorMessage = err.response?.data?.error || err.response?.data?.message || '注册失败，请重试';
       const debugInfo = import.meta.env.DEV ? ` (状态码: ${err.response?.status || '未知'})` : '';
-      setError(errorMessage + debugInfo);
+      toast.error(errorMessage + debugInfo);
       // 刷新验证码
       fetchCaptcha();
     } finally {
@@ -301,39 +301,55 @@ const Register = () => {
   } : {};
 
   return (
-    <div className={`min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 ${!registerBg ? 'bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900' : ''}`} style={bgStyle}>
+    <div className={`min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden ${!registerBg ? 'bg-gray-50 dark:bg-gray-900' : ''}`} style={bgStyle}>
+      {/* 背景装饰 - 纯色 */}
+      {!registerBg && (
+        <>
+          <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-100/50 dark:bg-indigo-900/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-100/50 dark:bg-blue-900/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+        </>
+      )}
+      
       {/* 背景遮罩，确保文字可读 */}
       {registerBg && (
-        <div className="fixed inset-0 bg-black/40 z-0" />
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-0" />
       )}
+      
       <div className="max-w-md w-full relative z-10">
-        {/* 注册卡片 */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 sm:p-10">
+        {/* 注册卡片 - 玻璃拟态 */}
+        <div className="glass rounded-3xl shadow-2xl p-8 sm:p-10 border border-white/50 dark:border-white/10">
           {/* 头部 */}
           <div className="text-center mb-8">
-            <div className="mx-auto w-16 h-16 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center mb-4">
-              <UserPlus className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+            <div className="mx-auto w-20 h-20 rounded-2xl bg-indigo-600 flex items-center justify-center mb-5 shadow-lg">
+              <UserPlus className="w-10 h-10 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
               创建账号
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              加入Mio的日记本
+            <p className="text-gray-500 dark:text-gray-400">
+              加入Mio的日记本，开始记录
             </p>
           </div>
 
-          {/* 错误提示 */}
-          <ErrorMessage message={error} />
+          {/* 错误提示 - XSS防护 */}
+          {/* {error && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-4 h-4 text-red-600 dark:text-red-400" />
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300">{sanitizeText(error)}</p>
+            </div>
+          )} */}
 
           {/* 成功提示 */}
-          {success && (
+          {/* {success && (
             <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
               <p className="text-green-800 dark:text-green-200 text-sm font-medium flex items-center gap-2">
                 <Check className="w-5 h-5" />
                 注册成功！正在跳转到登录页面...
               </p>
             </div>
-          )}
+          )} */}
 
           {/* 提示信息 */}
           <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -413,7 +429,7 @@ const Register = () => {
                     <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
                   ) : captchaSvg ? (
                     <div 
-                      dangerouslySetInnerHTML={{ __html: captchaSvg }} 
+                      dangerouslySetInnerHTML={{ __html: sanitizeSVG(captchaSvg) }} 
                       className="w-full h-full flex items-center justify-center [&_svg]:max-w-full [&_svg]:max-h-full [&_svg]:w-auto [&_svg]:h-auto" 
                     />
                   ) : (
@@ -607,7 +623,7 @@ const Register = () => {
             <button
               type="submit"
               disabled={isLoading || isSubmitting || success}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              className="btn-primary w-full py-3.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -616,13 +632,13 @@ const Register = () => {
                 </>
               ) : success ? (
                 <>
-                  <Check className="w-4 h-4" />
+                  <Check className="w-5 h-5" />
                   <span>注册成功</span>
                 </>
               ) : (
                 <>
-                  <UserPlus className="w-4 h-4" />
-                  <span>注册</span>
+                  <UserPlus className="w-5 h-5" />
+                  <span>立即注册</span>
                 </>
               )}
             </button>

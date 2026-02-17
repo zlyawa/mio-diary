@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ConfigProvider, useConfig } from './context/ConfigContext';
+import { ToastProvider } from './context/ToastContext';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
 /**
@@ -97,6 +98,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const ProtectedRoute = lazy(() => import('./pages/ProtectedRoute'));
+const WritingStats = lazy(() => import('./pages/WritingStats'));
 
 // 管理后台组件
 const AdminRoute = lazy(() => import('./pages/AdminRoute'));
@@ -105,8 +107,13 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const DiaryReview = lazy(() => import('./pages/DiaryReview'));
 const AdminDiaryList = lazy(() => import('./pages/AdminDiaryList'));
+const CommentList = lazy(() => import('./pages/CommentList'));
+const CommentReview = lazy(() => import('./pages/CommentReview'));
 const SystemSettings = lazy(() => import('./pages/SystemSettings'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
+const Categories = lazy(() => import('./pages/Categories'));
+const Favorites = lazy(() => import('./pages/Favorites'));
+const MyComments = lazy(() => import('./pages/MyComments'));
 
 // 加载组件
 const PageLoader = () => (
@@ -119,12 +126,13 @@ const PageLoader = () => (
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <ConfigProvider>
+      <ConfigProvider>
+        <ThemeProvider>
           <FaviconUpdater />
           <AuthProvider>
-            <Router>
-            <Suspense fallback={<PageLoader />}>
+            <ToastProvider>
+              <Router>
+                <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* 公开路由 */}
                 <Route path="/login" element={<Login />} />
@@ -197,6 +205,38 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/stats"
+                  element={
+                    <ProtectedRoute>
+                      <WritingStats />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/categories"
+                  element={
+                    <ProtectedRoute>
+                      <Categories />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/favorites"
+                  element={
+                    <ProtectedRoute>
+                      <Favorites />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-comments"
+                  element={
+                    <ProtectedRoute>
+                      <MyComments />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* 管理后台路由 */}
                 <Route
@@ -240,6 +280,26 @@ function App() {
                   }
                 />
                 <Route
+                  path="/admin/comments"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <CommentList />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/comments/review"
+                  element={
+                    <AdminRoute>
+                      <AdminLayout>
+                        <CommentReview />
+                      </AdminLayout>
+                    </AdminRoute>
+                  }
+                />
+                <Route
                   path="/admin/settings"
                   element={
                     <AdminRoute>
@@ -263,11 +323,12 @@ function App() {
                 {/* 404重定向 */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-            </Suspense>
-          </Router>
+                </Suspense>
+              </Router>
+            </ToastProvider>
           </AuthProvider>
-        </ConfigProvider>
-      </ThemeProvider>
+        </ThemeProvider>
+      </ConfigProvider>
     </ErrorBoundary>
   );
 }
