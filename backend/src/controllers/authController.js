@@ -222,7 +222,7 @@ const sendVerificationCode = async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error(`[发送验证码错误] 邮箱: ${email}, 错误: ${error.message}`);
+    console.error(`[发送验证码错误] 邮箱: ${typeof sanitizedEmail !== 'undefined' ? sanitizedEmail : 'unknown'}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -569,6 +569,7 @@ const register = async (req, res, next) => {
 
     const user = await prisma.user.create({
       data: {
+        id: require('crypto').randomUUID(),
         email: sanitizedEmail,
         username: defaultUsername,
         password: hashedPassword,
@@ -587,7 +588,7 @@ const register = async (req, res, next) => {
 
     // 如果是第一个用户，打印日志提示
     if (isFirstUser) {
-      console.log(`[系统] 首次用户注册: ${email}, 已设置为管理员`);
+      console.log(`[系统] 首次用户注册: ${sanitizedEmail}, 已设置为管理员`);
     }
 
     res.status(201).json({
@@ -595,7 +596,7 @@ const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
-    console.error(`[注册错误] 邮箱: ${email}, 错误: ${error.message}`);
+    console.error(`[注册错误] 邮箱: ${sanitizedEmail}, 错误: ${error.message}`);
     next(error);
   }
 };

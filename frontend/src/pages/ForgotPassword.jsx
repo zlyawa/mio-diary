@@ -268,7 +268,7 @@ const ForgotPassword = () => {
                       },
                     })}
                     disabled={isLoading}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                    className="input-field pl-10"
                     placeholder="请输入注册邮箱"
                   />
                 </div>
@@ -297,7 +297,7 @@ const ForgotPassword = () => {
                       maxLength: { value: 4, message: '验证码为4位' },
                     })}
                     disabled={isLoading}
-                    className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                    className="flex-1 min-w-0 input-field"
                     placeholder="请输入验证码"
                     maxLength={4}
                   />
@@ -342,7 +342,7 @@ const ForgotPassword = () => {
                       minLength: { value: 6, message: '验证码为6位' },
                     })}
                     disabled={isLoading}
-                    className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                    className="flex-1 min-w-0 input-field"
                     placeholder="请输入验证码"
                     maxLength={6}
                   />
@@ -400,7 +400,7 @@ const ForgotPassword = () => {
                       },
                     })}
                     disabled={isLoading}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
+                    className="input-field pl-10"
                     placeholder="请输入新密码"
                   />
                 </div>

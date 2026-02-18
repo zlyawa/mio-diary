@@ -387,7 +387,7 @@ const Register = () => {
                     },
                   })}
                   disabled={isLoading || success}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="input-field pl-10"
                   placeholder="请输入邮箱"
                 />
               </div>
@@ -416,7 +416,7 @@ const Register = () => {
                     maxLength: { value: 4, message: '验证码为4位' },
                   })}
                   disabled={isLoading || success}
-                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 min-w-0 input-field"
                   placeholder="请输入验证码"
                   maxLength={4}
                 />
@@ -463,7 +463,7 @@ const Register = () => {
                     value={emailCode}
                     onChange={(e) => setEmailCode(e.target.value)}
                     disabled={isLoading || success}
-                    className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 min-w-0 input-field"
                     placeholder="请输入邮箱验证码"
                     maxLength={6}
                   />
@@ -531,7 +531,7 @@ const Register = () => {
                     },
                   })} 
                   disabled={isLoading || success}
-                  className="w-full pl-10 pr-12 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="input-field pl-10 pr-12"
                   placeholder="请输入密码"
                 />
                 <button
@@ -596,7 +596,7 @@ const Register = () => {
                       value === password || '两次输入的密码不一致',
                   })}
                   disabled={isLoading || success}
-                  className="w-full pl-10 pr-12 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="input-field pl-10 pr-12"
                   placeholder="请再次输入密码"
                 />
                 <button

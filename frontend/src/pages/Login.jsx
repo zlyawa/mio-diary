@@ -336,7 +336,7 @@ const Login = () => {
                       className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                       tabIndex={-1}
                     >
-                      {showPassword ? <EyeOff className="h-5 h-5" /> : <Eye className="h-5 h-5" />}
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
                   </div>
                   {errors.password && (
