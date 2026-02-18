@@ -504,7 +504,10 @@ const AdminLayout = ({ children }) => {
                               <Link
                                 key={child.path}
                                 to={child.path}
-                                onClick={() => setIsMobileMenuOpen(false)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsMobileMenuOpen(false);
+                                }}
                                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                                   childActive
                                     ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
