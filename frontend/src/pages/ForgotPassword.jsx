@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { Mail, Lock, KeyRound, ArrowLeft, Check, RefreshCw, Send } from 'lucide-react';
 // import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import api from '../utils/api';
+import api, { getImageUrl } from '../utils/api';
 import { sanitizeText, sanitizeSVG } from '../utils/security';
 
 /**
@@ -148,18 +148,8 @@ const ForgotPassword = () => {
     );
   }
 
-  // 获取背景图URL
-  const getBgUrl = (bg) => {
-    if (!bg) return '';
-    if (bg.startsWith('http')) return bg;
-    // 如果已经是 /uploads/ 开头，直接返回
-    if (bg.startsWith('/uploads/')) return bg;
-    // 否则添加 /uploads/ 前缀
-    return `/uploads/${bg}`;
-  };
-
   const bgStyle = forgotPasswordBg ? {
-    backgroundImage: `url(${getBgUrl(forgotPasswordBg)})`,
+    backgroundImage: `url(${getImageUrl(forgotPasswordBg)})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',

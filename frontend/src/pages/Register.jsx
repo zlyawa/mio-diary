@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { Eye, EyeOff, Mail, Lock, Check, UserPlus, Sparkles, RefreshCw, Send } from 'lucide-react';
 // import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import api from '../utils/api';
+import api, { getImageUrl } from '../utils/api';
 import { sanitizeText, sanitizeSVG } from '../utils/security';
 
 /**
@@ -283,18 +283,8 @@ const Register = () => {
     setShowConfirmPassword(!showConfirmPassword);
   };
 
-  // 获取背景图URL
-  const getBgUrl = (bg) => {
-    if (!bg) return '';
-    if (bg.startsWith('http')) return bg;
-    // 如果已经是 /uploads/ 开头，直接返回
-    if (bg.startsWith('/uploads/')) return bg;
-    // 否则添加 /uploads/ 前缀
-    return `/uploads/${bg}`;
-  };
-
   const bgStyle = registerBg ? {
-    backgroundImage: `url(${getBgUrl(registerBg)})`,
+    backgroundImage: `url(${getImageUrl(registerBg)})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',

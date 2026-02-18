@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { Eye, EyeOff, Lock, User, ArrowRight, Sparkles, Shield, Zap, BookOpen } from 'lucide-react';
 // import ErrorMessage from '../components/common/ErrorMessage'; // 保留原有组件
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { getImageUrl } from '../utils/api';
 
 /**
  * 登录页面组件
@@ -24,16 +25,8 @@ const Login = () => {
   const [attempts, setAttempts] = useState(0);
   const [lockoutTime, setLockoutTime] = useState(null);
 
-  // 获取背景图URL
-  const getBgUrl = (bg) => {
-    if (!bg) return '';
-    if (bg.startsWith('http')) return bg;
-    if (bg.startsWith('/uploads/')) return bg;
-    return `/uploads/${bg}`;
-  };
-
   const bgStyle = loginBg ? {
-    backgroundImage: `url(${getBgUrl(loginBg)})`,
+    backgroundImage: `url(${getImageUrl(loginBg)})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
