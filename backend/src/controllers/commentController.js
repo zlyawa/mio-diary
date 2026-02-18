@@ -273,11 +273,15 @@ const getComments = async (req, res, next) => {
         comment.isLiked = likedSet.has(comment.id);
         comment.likeCount = comment._count.likes;
         comment.replyCount = comment._count.replies;
+        // 解析 images 字段
+        comment.images = comment.images ? JSON.parse(comment.images) : [];
         delete comment._count;
         
         comment.replies.items.forEach(reply => {
           reply.isLiked = likedSet.has(reply.id);
           reply.likeCount = reply._count.likes;
+          // 解析回复的 images 字段
+          reply.images = reply.images ? JSON.parse(reply.images) : [];
           delete reply._count;
         });
       });
@@ -288,11 +292,15 @@ const getComments = async (req, res, next) => {
         comment.isLiked = false;
         comment.likeCount = comment._count.likes;
         comment.replyCount = comment._count.replies;
+        // 解析 images 字段
+        comment.images = comment.images ? JSON.parse(comment.images) : [];
         delete comment._count;
         
         comment.replies.items.forEach(reply => {
           reply.isLiked = false;
           reply.likeCount = reply._count.likes;
+          // 解析回复的 images 字段
+          reply.images = reply.images ? JSON.parse(reply.images) : [];
           delete reply._count;
         });
       });
@@ -561,6 +569,7 @@ const createComment = async (req, res, next) => {
       likeCount: 0,
       isLiked: false,
       replyCount: 0,
+      images: comment.images ? JSON.parse(comment.images) : [],
       replies: { items: [], total: 0, hasMore: false }
     };
     delete responseComment._count;
@@ -609,7 +618,12 @@ const updateComment = async (req, res, next) => {
     
     // 如果内容没有变化，直接返回
     if (trimmedContent === comment.content) {
-      return successResponse(res, { comment }, '评论内容未变化');
+      return successResponse(res, { 
+        comment: {
+          ...comment,
+          images: comment.images ? JSON.parse(comment.images) : []
+        }
+      }, '评论内容未变化');
     }
 
     // 使用事务：保存编辑历史 + 更新评论
@@ -665,6 +679,7 @@ const updateComment = async (req, res, next) => {
       ...updated,
       likeCount: updated._count.likes,
       replyCount: updated._count.replies,
+      images: updated.images ? JSON.parse(updated.images) : [],
       isLiked
     };
     delete responseComment._count;
@@ -1048,7 +1063,12 @@ const reviewComment = async (req, res, next) => {
       }
     }
 
-    return successResponse(res, { comment }, status === 'approved' ? '评论已通过审核' : '评论已拒绝');
+    return successResponse(res, { 
+      comment: {
+        ...comment,
+        images: comment.images ? JSON.parse(comment.images) : []
+      }
+    }, status === 'approved' ? '评论已通过审核' : '评论已拒绝');
   } catch (error) {
     next(error);
   }

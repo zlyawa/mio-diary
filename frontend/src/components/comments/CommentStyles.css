@@ -706,6 +706,27 @@
   margin: 0.5rem 0;
 }
 
+/* 评论上传的图片 */
+.comment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.comment-uploaded-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.comment-uploaded-image:hover {
+  transform: scale(1.02);
+}
+
 .comment-text a {
   color: #6366f1;
   text-decoration: none;

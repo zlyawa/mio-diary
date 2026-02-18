@@ -28,7 +28,7 @@ import {
 import DOMPurify from 'dompurify';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import api from '../../utils/api';
+import api, { getImageUrl } from '../../utils/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import './CommentStyles.css';
 
@@ -641,6 +641,21 @@ const CommentSection = ({ diaryId }) => {
             className="comment-text"
             dangerouslySetInnerHTML={renderContent(comment.content)}
           />
+          
+          {/* 评论图片 */}
+          {comment.images && comment.images.length > 0 && (
+            <div className="comment-images">
+              {comment.images.map((img, idx) => (
+                <img 
+                  key={idx}
+                  src={getImageUrl(img)}
+                  alt="评论图片"
+                  className="comment-uploaded-image"
+                  loading="lazy"
+                />
+              ))}
+            </div>
+          )}
           
           <div className="comment-actions">
             <button 
