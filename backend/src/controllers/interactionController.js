@@ -49,9 +49,16 @@ const toggleLike = async (req, res, next) => {
         message: '已取消点赞'
       });
     } else {
-      // 添加点赞
-      await prisma.like.create({
-        data: {
+      // 添加点赞（使用 upsert 防止竞态条件导致重复）
+      await prisma.like.upsert({
+        where: {
+          userId_diaryId: {
+            userId,
+            diaryId
+          }
+        },
+        update: {},
+        create: {
           userId,
           diaryId
         }
@@ -164,9 +171,18 @@ const toggleFavorite = async (req, res, next) => {
         message: '已取消收藏'
       });
     } else {
-      // 添加收藏
-      await prisma.favorite.create({
-        data: {
+      // 添加收藏（使用 upsert 防止竞态条件导致重复）
+      await prisma.favorite.upsert({
+        where: {
+          userId_diaryId: {
+            userId,
+            diaryId
+          }
+        },
+        update: {
+          folderId: folderId || null
+        },
+        create: {
           userId,
           diaryId,
           folderId: folderId || null

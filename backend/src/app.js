@@ -227,7 +227,7 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Mio的日记本 API运行正常',
-    version: '2.0.2',
+    version: '2.1.1',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -277,7 +277,7 @@ app.get('/api/stats/docs', (req, res) => {
 app.get('/api', (req, res) => {
   res.json({
     name: 'Mio的日记本 API',
-    version: '2.0.0',
+    version: '2.1.1',
     description: '个人日记网站后端API',
     endpoints: {
       auth: '/api/auth',

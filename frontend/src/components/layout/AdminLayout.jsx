@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -49,6 +49,13 @@ const AdminLayout = ({ children }) => {
 
   const displaySiteName = siteName || 'Mio日记';
 
+  // 路由变化时关闭移动端菜单
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setDiaryMenuOpen(false);
+    setCommentMenuOpen(false);
+  }, [location.pathname]);
+
   // 获取未读通知数量
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -84,9 +91,12 @@ const AdminLayout = ({ children }) => {
     };
   }, [user]);
 
-  // 点击外部关闭菜单
+  // 点击外部关闭菜单（仅电脑端下拉菜单）
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // 只处理电脑端的下拉菜单，不影响移动端
+      if (window.innerWidth < 768) return;
+      
       if (navMenuRef.current && !navMenuRef.current.contains(event.target)) {
         setNavMenuOpen(false);
         setDiaryMenuOpen(false);
@@ -464,158 +474,248 @@ const AdminLayout = ({ children }) => {
 
       {/* 移动端菜单 */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-40">
-          {/* 遮罩层 */}
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-          {/* 菜单内容 */}
-          <div className="absolute top-16 left-0 right-0 bottom-0 bg-white dark:bg-gray-800 overflow-y-auto">
-            <div className="p-4 space-y-1">
-              {menuItems.map((item) => {
-                if (item.type === 'group') {
-                  const active = isGroupActive(item.children);
-                  const Icon = item.icon;
-                  const isMenuOpen = item.key === 'diary' ? diaryMenuOpen : 
-                                    item.key === 'comment' ? commentMenuOpen : false;
-                  const setMenuOpen = item.key === 'diary' ? setDiaryMenuOpen : 
-                                     item.key === 'comment' ? setCommentMenuOpen : () => {};
-                  return (
-                    <div key={item.key}>
-                      <button
-                        onClick={() => setMenuOpen(!isMenuOpen)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg transition-colors ${
-                          active
-                            ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                        <span className="font-medium flex-1 text-left">{item.label}</span>
-                        <ChevronDown className={`w-4 h-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {isMenuOpen && (
-                        <div className="ml-4 mt-1 space-y-1">
-                          {item.children.map((child) => {
-                            const ChildIcon = child.icon;
-                            const childActive = isActive(child.path);
-                            return (
-                              <Link
-                                key={child.path}
-                                to={child.path}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsMobileMenuOpen(false);
-                                }}
-                                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                                  childActive
-                                    ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
-                              >
-                                <ChildIcon className="w-4 h-4" />
-                                <span className="text-sm">{child.label}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+        <div 
+          className="md:hidden fixed top-16 left-0 right-0 bottom-0 z-40 bg-white dark:bg-gray-800 overflow-y-auto"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <nav className="p-4 space-y-1">
+            {menuItems.map((item) => {
+              if (item.type === 'group') {
+                const active = isGroupActive(item.children);
                 const Icon = item.icon;
-                const active = isActive(item.path, item.exact);
+                const isSubMenuOpen = item.key === 'diary' ? diaryMenuOpen : 
+                                  item.key === 'comment' ? commentMenuOpen : false;
+                
                 return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3.5 rounded-lg transition-colors ${
-                      active
-                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-1">
-              {/* 主题切换 */}
-              <button
-                onClick={toggleTheme}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                <span className="font-medium">{isDark ? '亮色模式' : '暗色模式'}</span>
-              </button>
-              {/* 用户主页 */}
-              {user && (
-                <Link
-                  to={`/profile/${user.username}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  <User className="w-5 h-5" />
-                  <span className="font-medium">我的主页</span>
-                </Link>
-              )}
-              <Link
-                to="/"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3.5 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20"
-              >
-                <Home className="w-5 h-5" />
-                <span className="font-medium">返回用户端</span>
-              </Link>
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  handleLogout();
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-              >
-                <LogOut className="w-5 h-5" />
-                <span className="font-medium">退出登录</span>
-              </button>
-            </div>
-            {/* 用户信息 */}
-            {user && (
-              <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center overflow-hidden">
-                    {user.avatarUrl ? (
-                      <img
-                        src={getImageUrl(user.avatarUrl)}
-                        alt={user.username}
-                        className="w-10 h-10 rounded-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    <span 
-                      className={`text-sm font-medium text-indigo-600 dark:text-indigo-400 ${user.avatarUrl ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                  <div key={item.key}>
+                    {/* 父菜单按钮 */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (item.key === 'diary') {
+                          setDiaryMenuOpen(prev => !prev);
+                          setCommentMenuOpen(false);
+                        } else if (item.key === 'comment') {
+                          setCommentMenuOpen(prev => !prev);
+                          setDiaryMenuOpen(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (item.key === 'diary') {
+                            setDiaryMenuOpen(prev => !prev);
+                            setCommentMenuOpen(false);
+                          } else if (item.key === 'comment') {
+                            setCommentMenuOpen(prev => !prev);
+                            setDiaryMenuOpen(false);
+                          }
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg cursor-pointer select-none ${
+                        active
+                          ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                          : 'text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-gray-700'
+                      }`}
                     >
-                      {user.username?.charAt(0)?.toUpperCase() || 'A'}
-                    </span>
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className="font-medium flex-1 text-left">{item.label}</span>
+                      <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isSubMenuOpen ? 'rotate-180' : ''}`} />
+                    </div>
+                    
+                    {/* 子菜单 */}
+                    {isSubMenuOpen && (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {item.children.map((child) => {
+                          const ChildIcon = child.icon;
+                          const childActive = isActive(child.path);
+                          return (
+                            <div
+                              key={child.path}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                navigate(child.path);
+                                setIsMobileMenuOpen(false);
+                                setDiaryMenuOpen(false);
+                                setCommentMenuOpen(false);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  navigate(child.path);
+                                  setIsMobileMenuOpen(false);
+                                  setDiaryMenuOpen(false);
+                                  setCommentMenuOpen(false);
+                                }
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer select-none ${
+                                childActive
+                                  ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                  : 'text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-gray-700'
+                              }`}
+                            >
+                              <ChildIcon className="w-4 h-4 flex-shrink-0" />
+                              <span className="text-sm">{child.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {user.username || '管理员'}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {user.email || ''}
-                    </p>
-                  </div>
+                );
+              }
+              
+              // 普通菜单项
+              const Icon = item.icon;
+              const active = isActive(item.path, item.exact);
+              return (
+                <div
+                  key={item.path}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    navigate(item.path);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(item.path);
+                      setIsMobileMenuOpen(false);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg cursor-pointer select-none ${
+                    active
+                      ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                      : 'text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-gray-700'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  <span className="font-medium">{item.label}</span>
                 </div>
+              );
+            })}
+          </nav>
+          
+          <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-1">
+            {/* 主题切换 */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={toggleTheme}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleTheme();
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-gray-700 cursor-pointer select-none"
+            >
+              {isDark ? <Sun className="w-5 h-5 flex-shrink-0" /> : <Moon className="w-5 h-5 flex-shrink-0" />}
+              <span className="font-medium">{isDark ? '亮色模式' : '暗色模式'}</span>
+            </div>
+            
+            {/* 用户主页 */}
+            {user && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  navigate(`/profile/${user.username}`);
+                  setIsMobileMenuOpen(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/profile/${user.username}`);
+                    setIsMobileMenuOpen(false);
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-gray-700 cursor-pointer select-none"
+              >
+                <User className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium">我的主页</span>
               </div>
             )}
+            
+            {/* 返回用户端 */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                navigate('/');
+                setIsMobileMenuOpen(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate('/');
+                  setIsMobileMenuOpen(false);
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-purple-600 dark:text-purple-400 active:bg-purple-50 dark:active:bg-purple-900/20 cursor-pointer select-none"
+            >
+              <Home className="w-5 h-5 flex-shrink-0" />
+              <span className="font-medium">返回用户端</span>
+            </div>
+            
+            {/* 退出登录 */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                handleLogout();
+                setIsMobileMenuOpen(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleLogout();
+                  setIsMobileMenuOpen(false);
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-red-600 dark:text-red-400 active:bg-red-50 dark:active:bg-red-900/20 cursor-pointer select-none"
+            >
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              <span className="font-medium">退出登录</span>
+            </div>
           </div>
+          
+          {/* 用户信息 */}
+          {user && (
+            <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {user.avatarUrl ? (
+                    <img
+                      src={getImageUrl(user.avatarUrl)}
+                      alt={user.username}
+                      className="w-10 h-10 rounded-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <span 
+                    className={`text-sm font-medium text-indigo-600 dark:text-indigo-400 ${user.avatarUrl ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                  >
+                    {user.username?.charAt(0)?.toUpperCase() || 'A'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {user.username || '管理员'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {user.email || ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

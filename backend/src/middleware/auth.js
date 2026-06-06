@@ -2,8 +2,40 @@ const { verifyAccessToken } = require('../utils/jwt');
 const prisma = require('../config/database');
 const { redis } = require('../config/redis');
 
-// 内存黑名单作为Redis的备用（仅用于Redis不可用时）
-const TOKEN_BLACKLIST_MEMORY = new Set();
+// 内存黑名单配置
+const MEMORY_BLACKLIST_MAX_SIZE = 10000; // 最大容量
+const MEMORY_BLACKLIST_MAX_AGE = 24 * 60 * 60 * 1000; // 最大存活时间 24小时
+
+// 内存黑名单（使用 Map 存储 token 和过期时间，支持 LRU 淘汰）
+const TOKEN_BLACKLIST_MEMORY = new Map();
+const BLACKLIST_TIMERS = new Map(); // 存储定时器 ID
+
+/**
+ * 清理过期的内存黑名单条目
+ */
+const cleanupMemoryBlacklist = () => {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  for (const [token, expireTime] of TOKEN_BLACKLIST_MEMORY) {
+    if (expireTime <= now) {
+      TOKEN_BLACKLIST_MEMORY.delete(token);
+      const timer = BLACKLIST_TIMERS.get(token);
+      if (timer) {
+        clearTimeout(timer);
+        BLACKLIST_TIMERS.delete(token);
+      }
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`[Auth] 清理了 ${cleaned} 个过期的内存黑名单条目`);
+  }
+};
+
+// 定期清理过期条目（每10分钟）
+setInterval(cleanupMemoryBlacklist, 10 * 60 * 1000);
 
 /**
  * 检查Token是否在黑名单中
@@ -22,7 +54,54 @@ const isTokenBlacklisted = async (token) => {
   }
   
   // Redis失败时回退到内存检查
-  return TOKEN_BLACKLIST_MEMORY.has(token);
+  const expireTime = TOKEN_BLACKLIST_MEMORY.get(token);
+  if (expireTime) {
+    // 检查是否已过期
+    if (expireTime > Date.now()) {
+      return true;
+    }
+    // 已过期，清理
+    TOKEN_BLACKLIST_MEMORY.delete(token);
+  }
+  return false;
+};
+
+/**
+ * 将Token加入内存黑名单（带 LRU 淘汰）
+ * @param {string} token - JWT Token
+ * @param {number} expiresInSeconds - Token过期时间（秒）
+ */
+const addToMemoryBlacklist = (token, expiresInSeconds) => {
+  // 如果超过最大容量，淘汰最旧的条目
+  if (TOKEN_BLACKLIST_MEMORY.size >= MEMORY_BLACKLIST_MAX_SIZE) {
+    // Map 会保持插入顺序，第一个就是最旧的
+    const oldestKey = TOKEN_BLACKLIST_MEMORY.keys().next().value;
+    if (oldestKey) {
+      TOKEN_BLACKLIST_MEMORY.delete(oldestKey);
+      const oldTimer = BLACKLIST_TIMERS.get(oldestKey);
+      if (oldTimer) {
+        clearTimeout(oldTimer);
+        BLACKLIST_TIMERS.delete(oldestKey);
+      }
+      console.log(`[Auth] 内存黑名单已满，淘汰最旧条目`);
+    }
+  }
+  
+  // 限制过期时间不超过最大值
+  const ttl = Math.min(expiresInSeconds * 1000, MEMORY_BLACKLIST_MAX_AGE);
+  const expireTime = Date.now() + ttl;
+  
+  TOKEN_BLACKLIST_MEMORY.set(token, expireTime);
+  
+  // 设置定时清理（使用存储定时器 ID 以便需要时清理）
+  const timerId = setTimeout(() => {
+    TOKEN_BLACKLIST_MEMORY.delete(token);
+    BLACKLIST_TIMERS.delete(token);
+  }, ttl);
+  
+  BLACKLIST_TIMERS.set(token, timerId);
+  
+  console.log(`[Auth] Token已加入内存黑名单，${expiresInSeconds}秒后过期，当前数量: ${TOKEN_BLACKLIST_MEMORY.size}`);
 };
 
 /**
@@ -34,15 +113,11 @@ const blacklistToken = async (token, expiresInSeconds = 3600) => {
   try {
     // 存入Redis，TTL为Token剩余过期时间
     await redis.setex(`blacklist:${token}`, expiresInSeconds, '1');
-    console.log(`[Auth] Token已加入黑名单，${expiresInSeconds}秒后过期`);
+    console.log(`[Auth] Token已加入Redis黑名单，${expiresInSeconds}秒后过期`);
   } catch (error) {
-    console.error('[Auth] Redis加入黑名单失败:', error.message);
+    console.error('[Auth] Redis加入黑名单失败，使用内存备份:', error.message);
     // Redis失败时存入内存
-    TOKEN_BLACKLIST_MEMORY.add(token);
-    // 设置定时清理
-    setTimeout(() => {
-      TOKEN_BLACKLIST_MEMORY.delete(token);
-    }, expiresInSeconds * 1000);
+    addToMemoryBlacklist(token, expiresInSeconds);
   }
 };
 

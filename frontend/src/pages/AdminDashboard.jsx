@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { getImageUrl } from '../utils/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import { useToast } from '../context/ToastContext';
 import {
   Users,
@@ -68,7 +67,7 @@ const AdminDashboard = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

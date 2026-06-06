@@ -1,15 +1,9 @@
 import { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon, AlertCircle, Loader2 } from 'lucide-react';
-import api from '../../utils/api';
-
-/**
- * API基础URL（用于API请求）
- */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import api, { getImageUrl } from '../../utils/api';
 
 /**
  * 静态文件基础URL（用于访问上传的图片）
- * 注意：后端静态文件服务直接挂载在 /uploads 路径下，而不是在 /api 下
  */
 const UPLOAD_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 

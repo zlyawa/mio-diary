@@ -153,7 +153,7 @@ const UserManagement = () => {
   if (loading && users.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

@@ -6,6 +6,7 @@ const { sendReviewNotification, sendAccountStatusNotification, sendPasswordReset
 const cacheService = require('../services/cacheService');
 const logger = require('../utils/logger');
 const { successResponse, errorResponse, validationError, notFoundError } = require('../utils/response');
+const { clearUserSessionCache } = require('../middleware/auth');
 
 // 缓存键常量
 const CACHE_KEYS = {
@@ -13,6 +14,7 @@ const CACHE_KEYS = {
   SYSTEM_CONFIG_HASH: 'system:config:hash',
   HEALTH_STATUS: 'system:health',
   ANNOUNCEMENTS: 'system:announcements',
+  UPLOAD_CONFIG: 'system:upload_config',
 };
 
 // 默认配置
@@ -568,6 +570,17 @@ const toggleUserBan = async (req, res, next) => {
       },
     });
 
+    // 封禁时立即清除用户会话缓存，使其立即失效
+    if (isBanned) {
+      try {
+        await clearUserSessionCache(userId);
+      } catch (cacheErr) {
+        console.warn('[封禁用户] 清除会话缓存失败:', cacheErr.message);
+      }
+      // 同时删除该用户的所有 refresh token
+      await prisma.refreshToken.deleteMany({ where: { userId } });
+    }
+
     await prisma.adminLog.create({
       data: {
         adminId,
@@ -618,8 +631,9 @@ const resetUserPassword = async (req, res, next) => {
 
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     let newPassword = '';
+    const randomBytes = require('crypto').randomBytes(12);
     for (let i = 0; i < 12; i++) {
-      newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+      newPassword += chars.charAt(randomBytes[i] % chars.length);
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
@@ -1008,6 +1022,7 @@ const updateSystemConfig = async (req, res, next) => {
 
     // 清除配置缓存
     await cacheService.del(CACHE_KEYS.SYSTEM_CONFIG);
+    await cacheService.del(CACHE_KEYS.UPLOAD_CONFIG);
 
     // 记录管理员日志
     const logDetails = {};
@@ -1074,6 +1089,7 @@ const resetSystemConfig = async (req, res, next) => {
 
     // 清除缓存
     await cacheService.del(CACHE_KEYS.SYSTEM_CONFIG);
+    await cacheService.del(CACHE_KEYS.UPLOAD_CONFIG);
 
     await prisma.adminLog.create({
       data: {
@@ -1095,6 +1111,7 @@ const clearConfigCache = async (req, res, next) => {
   try {
     await cacheService.del(CACHE_KEYS.SYSTEM_CONFIG);
     await cacheService.del(CACHE_KEYS.SYSTEM_CONFIG_HASH);
+    await cacheService.del(CACHE_KEYS.UPLOAD_CONFIG);
 
     successResponse(res, null, '配置缓存已清除');
   } catch (error) {
@@ -1111,7 +1128,7 @@ const exportConfig = async (req, res, next) => {
 
     // 移除敏感数据或标记为加密
     const exportData = {
-      version: '2.0.2',
+      version: '2.1.1',
       exportAt: new Date().toISOString(),
       config: merged,
     };
@@ -1188,7 +1205,13 @@ const importConfig = async (req, res, next) => {
     for (const [key, value] of Object.entries(importData)) {
       if (value === undefined) continue;
 
-      const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
+      let valueStr = typeof value === 'string' ? value : JSON.stringify(value);
+
+      // 加密敏感配置项
+      const sensitiveKeys = ['smtp.pass', 'zhipuApiKey', 'encryptionKey', 'encryptionIv'];
+      if (sensitiveKeys.includes(key) && valueStr && !valueStr.startsWith('enc:')) {
+        valueStr = encryptSensitiveData(valueStr);
+      }
 
       updatePromises.push(
         prisma.systemConfig.upsert({
@@ -1215,6 +1238,7 @@ const importConfig = async (req, res, next) => {
 
     // 清除缓存
     await cacheService.del(CACHE_KEYS.SYSTEM_CONFIG);
+    await cacheService.del(CACHE_KEYS.UPLOAD_CONFIG);
 
     successResponse(res, { importedCount: Object.keys(importData).length }, '配置导入成功');
   } catch (error) {
@@ -1493,12 +1517,12 @@ const healthCheck = async (req, res, next) => {
 
     // 总体状态
     const isHealthy = checks.database.status === 'healthy' && 
-                      (checks.redis.status === 'healthy' || checks.redis.status === 'unhealthy');
+                      checks.redis.status === 'healthy';
 
     res.json({
       status: isHealthy ? 'healthy' : 'unhealthy',
       timestamp: new Date().toISOString(),
-      version: '2.0.2',
+      version: '2.1.1',
       checks,
     });
   } catch (error) {

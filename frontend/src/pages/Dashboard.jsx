@@ -8,9 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Header from '../components/layout/Header';
 import Skeleton from '../components/common/Skeleton';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import api from '../utils/api';
-import { sanitizeHTML } from '../utils/security';
 
 /**
  * 心情映射配置
@@ -68,8 +66,13 @@ const Dashboard = () => {
    */
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchStats();
-    setIsRefreshing(false);
+    try {
+      await fetchStats();
+    } catch (err) {
+      console.error('刷新失败:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {

@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { User, Calendar, BookOpen, Smile, Clock, Settings, Edit3, Image as ImageIcon, Lock } from 'lucide-react';
 import api, { getImageUrl } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import Header from '../components/layout/Header';
 
 const ProfilePage = () => {
@@ -61,7 +60,7 @@ const ProfilePage = () => {
     }
   };
 
-  if (loading) return <LoadingSpinner size="large" />;
+  if (loading) return <LoadingSpinner size="lg" />;
   if (!profile) return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"><Header /><div className="text-center py-12 text-gray-500">用户不存在</div></div>;
 
   return (

@@ -289,6 +289,12 @@ const MoodTrendChart = ({ months, moods }) => {
  * 词云组件
  */
 const WordCloud = ({ words }) => {
+  // 打乱词序 - hooks 必须在组件顶层调用
+  const shuffledWords = useMemo(() => {
+    if (!words || words.length === 0) return [];
+    return [...words].sort(() => Math.random() - 0.5);
+  }, [words]);
+
   if (!words || words.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
@@ -317,11 +323,6 @@ const WordCloud = ({ words }) => {
     const ratio = (count - minCount) / Math.max(maxCount - minCount, 1);
     return 0.75 + ratio * 1.5; // 0.75rem to 2.25rem
   };
-
-  // 打乱词序
-  const shuffledWords = useMemo(() => {
-    return [...words].sort(() => Math.random() - 0.5);
-  }, [words]);
 
   return (
     <div className="flex flex-wrap gap-3 justify-center items-center min-h-[200px] p-4">
@@ -441,28 +442,6 @@ const WritingStats = () => {
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 如果统计功能未启用，显示提示
-  if (!enableStatistics) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <Header />
-        <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-          <BarChart3 className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">统计功能未启用</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            管理员尚未启用统计功能，请联系管理员开启。
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            返回首页
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   /**
    * 获取统计数据
    */
@@ -493,17 +472,22 @@ const WritingStats = () => {
    */
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchStats();
-    setIsRefreshing(false);
+    try {
+      await fetchStats();
+    } catch (err) {
+      console.error('刷新失败:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && enableStatistics) {
       fetchStats();
     } else {
       setIsLoading(false);
     }
-  }, [fetchStats, isAuthenticated]);
+  }, [fetchStats, isAuthenticated, enableStatistics]);
 
   const tabs = [
     { id: 'heatmap', label: '写作热力图', icon: Calendar },
@@ -511,6 +495,28 @@ const WritingStats = () => {
     { id: 'wordcloud', label: '词云', icon: Cloud },
     { id: 'habits', label: '写作习惯', icon: Clock },
   ];
+
+  // 如果统计功能未启用，显示提示
+  if (!enableStatistics) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+          <BarChart3 className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">统计功能未启用</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            管理员尚未启用统计功能，请联系管理员开启。
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            返回首页
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

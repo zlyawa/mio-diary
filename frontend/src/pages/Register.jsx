@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
 import { useToast } from '../context/ToastContext';
 import { Eye, EyeOff, Mail, Lock, Check, UserPlus, Sparkles, RefreshCw, Send } from 'lucide-react';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import api, { getImageUrl } from '../utils/api';
-import { sanitizeText, sanitizeSVG } from '../utils/security';
+import { sanitizeSVG } from '../utils/security';
 
 /**
  * 密码强度等级
@@ -26,10 +25,10 @@ const PASSWORD_STRENGTH = {
 const Register = () => {
   const navigate = useNavigate();
   const { register: registerUser, isAuthenticated, loading } = useAuth();
-  const { enableEmailVerify, registerBg, loading: configLoading } = useConfig();
+  const { enableEmailVerify, registerBg } = useConfig();
   const toast = useToast();
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const countdownTimerRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -44,7 +43,7 @@ const Register = () => {
   const [emailCode, setEmailCode] = useState('');
   const [sendCodeLoading, setSendCodeLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [emailForCode, setEmailForCode] = useState('');
+  const [, setEmailForCode] = useState('');
 
   /**
    * 注册成功后不需要自动跳转
@@ -53,6 +52,15 @@ const Register = () => {
   useEffect(() => {
     // 不再自动跳转，避免与手动跳转冲突
   }, [isAuthenticated, loading, navigate]);
+
+  // 清理倒计时定时器
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+    };
+  }, []);
 
   /**
    * 获取图片验证码
@@ -65,8 +73,6 @@ const Register = () => {
       });
       // 从响应头获取 captchaId
       const id = response.headers['x-captcha-id'];
-      console.log('[验证码] 响应头:', response.headers);
-      console.log('[验证码] captchaId:', id);
       setCaptchaId(id);
       setCaptchaSvg(response.data);
     } catch (err) {
@@ -127,6 +133,7 @@ const Register = () => {
           return prev - 1;
         });
       }, 1000);
+      countdownTimerRef.current = timer;
     } catch (err) {
       toast.error(err.response?.data?.message || '发送验证码失败');
       fetchCaptcha(); // 刷新验证码
@@ -146,7 +153,7 @@ const Register = () => {
   });
 
   const password = watch('password');
-  const confirmPassword = watch('confirmPassword');
+  watch('confirmPassword'); // 用于表单验证
 
   /**
    * 检查密码强度（与后端校验规则一致）

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import 'react-quill/dist/quill.bubble.css';
-import api from '../../utils/api';
 import { getImageUrl } from '../../utils/api';
 
 const DiaryReviewDetail = ({ diary, onClose, onApprove, onReject }) => {

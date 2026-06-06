@@ -22,9 +22,10 @@ const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 
-// 加密配置（与 adminController、emailService 保持一致）
-const ENCRYPTION_KEY = process.env.CONFIG_ENCRYPTION_KEY || 'MioDiary2026SecretKey32Chars!!';
-const ENCRYPTION_IV = process.env.CONFIG_ENCRYPTION_IV || 'MioDiaryIV16!!';
+// 加密配置（生产环境必须从环境变量读取）
+const isProduction = process.env.NODE_ENV === 'production';
+const ENCRYPTION_KEY = process.env.CONFIG_ENCRYPTION_KEY || (isProduction ? (() => { throw new Error('生产环境必须设置 CONFIG_ENCRYPTION_KEY'); })() : 'MioDiary2026SecretKey32Chars!!');
+const ENCRYPTION_IV = process.env.CONFIG_ENCRYPTION_IV || (isProduction ? (() => { throw new Error('生产环境必须设置 CONFIG_ENCRYPTION_IV'); })() : 'MioDiaryIV16!!');
 
 /**
  * 解密敏感数据

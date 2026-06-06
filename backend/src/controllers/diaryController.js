@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const notification = require('../utils/notification');
 const DOMPurify = require('isomorphic-dompurify');
+const { getEmailConfig } = require('../utils/emailService');
 
 const MOODS = ['happy', 'sad', 'excited', 'calm', 'anxious', 'angry', 'neutral'];
 
@@ -207,11 +208,9 @@ const createDiary = async (req, res, next) => {
       }
     }
 
-    // 获取全局审核开关配置
-    const config = await prisma.systemConfig.findUnique({
-      where: { key: 'enableUserReview' },
-    });
-    const enableUserReview = config ? JSON.parse(config.value) : false;
+    // 获取全局审核开关配置（使用缓存）
+    const emailConfig = await getEmailConfig().catch(() => ({}));
+    const enableUserReview = emailConfig.enableUserReview === true;
 
     // 如果全局审核开关开启，日记状态设为pending，否则为approved
     // 这适用于所有用户，不仅仅是新用户
@@ -481,6 +480,12 @@ const updateDiary = async (req, res, next) => {
 
     if (content !== undefined) {
       updateData.content = cleanContent(content);
+    }
+
+    // 如果启用了用户审核，编辑已审核的日记需要重新审核
+    const config = await getEmailConfig().catch(() => ({}));
+    if (config.enableUserReview && existingDiary.status === 'approved') {
+      updateData.status = 'pending';
     }
 
     // XSS过滤后，如果标题或内容有更新，进行敏感词检查

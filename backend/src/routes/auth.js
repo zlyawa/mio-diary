@@ -3,6 +3,7 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const { auth, optionalAuth } = require('../middleware/auth');
 const { validateRegistration, validateLogin, validateChangePassword, validateUsername } = require('../middleware/validator');
+const { loginRateLimiter, ipRateLimiter, codeSendRateLimiter } = require('../middleware/rateLimiter');
 
 /**
  * @route   GET /api/auth/captcha
@@ -17,7 +18,7 @@ router.get('/captcha', authController.generateImageCaptcha);
  * @access  Public
  * @body    { email, captchaId, captchaInput }
  */
-router.post('/send-verification-code', authController.sendVerificationCodeWithCaptcha);
+router.post('/send-verification-code', codeSendRateLimiter, authController.sendVerificationCodeWithCaptcha);
 
 /**
  * @route   POST /api/auth/register
@@ -33,7 +34,7 @@ router.post('/register', validateRegistration, authController.register);
  * @access  Public
  * @body    { email, password, rememberMe }
  */
-router.post('/login', validateLogin, authController.login);
+router.post('/login', loginRateLimiter, validateLogin, authController.login);
 
 /**
  * @route   POST /api/auth/refresh-token
@@ -106,6 +107,6 @@ router.get('/check', optionalAuth, (req, res) => {
  * @access  Public
  * @body    { email, verificationCode, newPassword }
  */
-router.post('/reset-password', authController.resetPassword);
+router.post('/reset-password', ipRateLimiter, authController.resetPassword);
 
 module.exports = router;

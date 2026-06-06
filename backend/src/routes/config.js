@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../config/database'); // 使用单例prisma实例
 const adminController = require('../controllers/adminController');
+const { auth, adminOnly } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const cacheService = require('../services/cacheService');
 
 // 设置 multer 用于数据库导入
 const upload = multer({ 
@@ -14,7 +16,7 @@ const upload = multer({
 
 // 版本信息常量
 const VERSION_INFO = {
-  version: '2.0.2',
+  version: '2.1.1',
   name: 'Mio的日记本',
   description: '个人日记管理系统',
   author: 'Mio',
@@ -128,7 +130,7 @@ router.get('/check-update', async (req, res) => {
  * 获取系统统计数据
  * GET /api/config/stats
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', auth, adminOnly, async (req, res) => {
   try {
     const [
       userCount,
@@ -183,7 +185,7 @@ router.get('/stats', async (req, res) => {
  * 导出数据库为 SQL 脚本
  * GET /api/config/export
  */
-router.get('/export', async (req, res) => {
+router.get('/export', auth, adminOnly, async (req, res) => {
   try {
     const dbPath = path.join(__dirname, '../../prisma/dev.db');
     
@@ -272,7 +274,7 @@ router.get('/export', async (req, res) => {
  * POST /api/config/import
  * 支持上传 .db/.sqlite/.sqlite3 文件或 .sql 脚本文件
  */
-router.post('/import', upload.single('database'), async (req, res) => {
+router.post('/import', auth, adminOnly, upload.single('database'), async (req, res) => {
   try {
     const dbPath = path.join(__dirname, '../../prisma/dev.db');
     const tempPath = req.file?.path;
@@ -355,6 +357,12 @@ router.post('/import', upload.single('database'), async (req, res) => {
  */
 router.get('/public', async (req, res) => {
   try {
+    const cacheKey = 'system:public_config';
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // 从SystemConfig表中获取配置
     const configs = await prisma.systemConfig.findMany();
     const configMap = {};
@@ -369,7 +377,7 @@ router.get('/public', async (req, res) => {
     });
 
     // 返回前端需要的配置项
-    res.json({
+    const publicConfig = {
       siteName: configMap.siteName || 'Mio日记',
       siteDescription: configMap.siteDescription || '',
       siteIcon: configMap.siteIcon || '',
@@ -403,7 +411,12 @@ router.get('/public', async (req, res) => {
       // 主题配置
       primaryColor: configMap.primaryColor || 'indigo',
       defaultTheme: configMap.defaultTheme || 'auto'
-    });
+    };
+
+    // 缓存5分钟
+    await cacheService.set(cacheKey, publicConfig, 300);
+
+    res.json(publicConfig);
   } catch (error) {
     console.error('[获取公开配置错误]', error);
     res.status(500).json({

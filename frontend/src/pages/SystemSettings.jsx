@@ -3134,7 +3134,7 @@ const SystemSettings = () => {
 
           {logsLoading ? (
             <div className="flex items-center justify-center py-12">
-              <LoadingSpinner size="large" />
+              <LoadingSpinner size="lg" />
             </div>
           ) : logs.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -3393,7 +3393,7 @@ const SystemSettings = () => {
 
           {configLogsLoading ? (
             <div className="flex items-center justify-center py-12">
-              <LoadingSpinner size="large" />
+              <LoadingSpinner size="lg" />
             </div>
           ) : configLogs.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -4333,7 +4333,7 @@ const SystemSettings = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

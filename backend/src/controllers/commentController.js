@@ -112,7 +112,7 @@ const getComments = async (req, res, next) => {
   try {
     const { diaryId } = req.params;
     const { page, cursor, limit = 20, sort = 'desc' } = req.query;
-    const take = parseInt(limit);
+    const take = Math.min(100, Math.max(1, parseInt(limit) || 20));
 
     // 验证日记存在
     const diary = await prisma.diary.findUnique({
@@ -207,49 +207,71 @@ const getComments = async (req, res, next) => {
       hasMore = skip + comments.length < total;
     }
 
-    // 获取回复（限制数量，避免数据过大）
-    const commentsWithReplies = await Promise.all(
-      comments.map(async (comment) => {
-        const replies = await prisma.comment.findMany({
-          where: { 
-            parentId: comment.id,
-            status: 'approved'
-          },
-          take: 3, // 默认只显示前3条回复
-          orderBy: { createdAt: 'asc' },
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatarUrl: true,
-                role: true
-              }
-            },
-            _count: {
-              select: { likes: true }
-            }
+    // 优化：批量获取所有顶级评论的回复，避免 N+1 查询
+    const parentIds = comments.map(c => c.id);
+    
+    // 单次查询获取所有回复
+    const allReplies = await prisma.comment.findMany({
+      where: { 
+        parentId: { in: parentIds },
+        status: 'approved'
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+            role: true
           }
-        });
+        },
+        _count: {
+          select: { likes: true }
+        }
+      }
+    });
 
-        // 获取回复总数
-        const totalReplies = await prisma.comment.count({
-          where: { 
-            parentId: comment.id,
-            status: 'approved'
-          }
-        });
+    // 单次查询获取每个父评论的回复总数
+    const replyCounts = await prisma.comment.groupBy({
+      by: ['parentId'],
+      where: { 
+        parentId: { in: parentIds },
+        status: 'approved'
+      },
+      _count: { id: true }
+    });
 
-        return {
-          ...comment,
-          replies: {
-            items: replies,
-            total: totalReplies,
-            hasMore: totalReplies > replies.length
-          }
-        };
-      })
-    );
+    // 构建回复总数映射
+    const replyCountMap = new Map();
+    replyCounts.forEach(item => {
+      replyCountMap.set(item.parentId, item._count.id);
+    });
+
+    // 在内存中组织回复树
+    const repliesByParentId = new Map();
+    allReplies.forEach(reply => {
+      if (!repliesByParentId.has(reply.parentId)) {
+        repliesByParentId.set(reply.parentId, []);
+      }
+      repliesByParentId.get(reply.parentId).push(reply);
+    });
+
+    // 组装评论和回复
+    const commentsWithReplies = comments.map(comment => {
+      const allCommentReplies = repliesByParentId.get(comment.id) || [];
+      const totalReplies = replyCountMap.get(comment.id) || 0;
+      const displayReplies = allCommentReplies.slice(0, 3); // 只显示前3条
+
+      return {
+        ...comment,
+        replies: {
+          items: displayReplies,
+          total: totalReplies,
+          hasMore: totalReplies > displayReplies.length
+        }
+      };
+    });
 
     // 如果用户已登录，获取每条评论的点赞状态
     if (req.user) {
@@ -274,14 +296,14 @@ const getComments = async (req, res, next) => {
         comment.likeCount = comment._count.likes;
         comment.replyCount = comment._count.replies;
         // 解析 images 字段
-        comment.images = comment.images ? JSON.parse(comment.images) : [];
+        comment.images = comment.images ? (() => { try { return JSON.parse(comment.images); } catch { return []; } })() : [];
         delete comment._count;
         
         comment.replies.items.forEach(reply => {
           reply.isLiked = likedSet.has(reply.id);
           reply.likeCount = reply._count.likes;
           // 解析回复的 images 字段
-          reply.images = reply.images ? JSON.parse(reply.images) : [];
+          reply.images = reply.images ? (() => { try { return JSON.parse(reply.images); } catch { return []; } })() : [];
           delete reply._count;
         });
       });
@@ -293,7 +315,7 @@ const getComments = async (req, res, next) => {
         comment.likeCount = comment._count.likes;
         comment.replyCount = comment._count.replies;
         // 解析 images 字段
-        comment.images = comment.images ? JSON.parse(comment.images) : [];
+        comment.images = comment.images ? (() => { try { return JSON.parse(comment.images); } catch { return []; } })() : [];
         delete comment._count;
         
         comment.replies.items.forEach(reply => {
@@ -333,7 +355,9 @@ const getReplies = async (req, res, next) => {
   try {
     const { commentId } = req.params;
     const { page = 1, limit = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
 
     // 验证父评论存在
     const parentComment = await prisma.comment.findUnique({
@@ -569,7 +593,7 @@ const createComment = async (req, res, next) => {
       likeCount: 0,
       isLiked: false,
       replyCount: 0,
-      images: comment.images ? JSON.parse(comment.images) : [],
+      images: comment.images ? (() => { try { return JSON.parse(comment.images); } catch { return []; } })() : [],
       replies: { items: [], total: 0, hasMore: false }
     };
     delete responseComment._count;
@@ -610,8 +634,8 @@ const updateComment = async (req, res, next) => {
       return validationError(res, '评论内容不能为空');
     }
 
-    if (content.length > 1000) {
-      return validationError(res, '评论内容不能超过1000字');
+    if (content.length > 2000) {
+      return validationError(res, '评论内容不能超过2000字');
     }
 
     const trimmedContent = content.trim();
@@ -757,6 +781,30 @@ const deleteComment = async (req, res, next) => {
       });
     });
 
+    // 清理评论图片文件
+    const imagesToDelete = [];
+    if (comment.images) {
+      try {
+        const images = JSON.parse(comment.images);
+        imagesToDelete.push(...images);
+      } catch {}
+    }
+    // 清理回复的图片
+    if (comment.replies && comment.replies.length > 0) {
+      comment.replies.forEach(reply => {
+        if (reply.images) {
+          try {
+            const replyImages = JSON.parse(reply.images);
+            imagesToDelete.push(...replyImages);
+          } catch {}
+        }
+      });
+    }
+    for (const imageUrl of imagesToDelete) {
+      const filePath = path.join(__dirname, '../..', imageUrl);
+      await fs.unlink(filePath).catch(() => {});
+    }
+
     return successResponse(res, null, '评论已删除');
   } catch (error) {
     next(error);
@@ -803,9 +851,16 @@ const toggleLikeComment = async (req, res, next) => {
       
       liked = false;
     } else {
-      // 添加点赞
-      await prisma.commentLike.create({
-        data: {
+      // 添加点赞（使用 upsert 防止竞态条件导致重复）
+      await prisma.commentLike.upsert({
+        where: {
+          userId_commentId: {
+            userId,
+            commentId
+          }
+        },
+        update: {},
+        create: {
           userId,
           commentId
         }
@@ -1041,17 +1096,18 @@ const reviewComment = async (req, res, next) => {
       // 发送邮件通知
       try {
         if (comment.user?.email) {
+          const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
           await sendEmail({
             to: comment.user.email,
             subject: '您的评论已通过审核 - Mio Diary',
             html: `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2 style="color: #10b981;">评论审核通过</h2>
-                <p>您好，${comment.user.username}！</p>
-                <p>您在日记《<strong>${comment.diary.title}</strong>》中的评论已通过审核。</p>
+                <p>您好，${escapeHtml(comment.user.username)}！</p>
+                <p>您在日记《<strong>${escapeHtml(comment.diary.title)}</strong>》中的评论已通过审核。</p>
                 <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
                   <p style="margin: 0; color: #6b7280;">评论内容：</p>
-                  <p style="margin: 10px 0 0 0;">${comment.content?.substring(0, 200)}${comment.content?.length > 200 ? '...' : ''}</p>
+                  <p style="margin: 10px 0 0 0;">${escapeHtml(comment.content?.substring(0, 200))}${comment.content?.length > 200 ? '...' : ''}</p>
                 </div>
                 <p>感谢您的参与！</p>
               </div>
@@ -1218,36 +1274,27 @@ const getAllComments = async (req, res, next) => {
       sortOrder = 'desc'
     } = req.query;
     
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const validSortBy = ['createdAt', 'updatedAt', 'content'].includes(sortBy) ? sortBy : 'createdAt';
+    const validSortOrder = ['asc', 'desc'].includes(sortOrder) ? sortOrder : 'desc';
 
     // 构建查询条件
     const where = {};
-    
-    if (status) {
+    if (status !== 'all') {
       where.status = status;
     }
-    
-    if (diaryId) {
-      where.diaryId = diaryId;
-    }
-    
-    if (userId) {
-      where.userId = userId;
-    }
-    
-    if (search) {
-      where.content = { contains: search };
-    }
 
-    // 排序
     const orderBy = {};
-    orderBy[sortBy] = sortOrder;
+    orderBy[validSortBy] = validSortOrder;
 
     const [comments, total] = await Promise.all([
       prisma.comment.findMany({
         where,
         skip,
-        take: parseInt(limit),
+        take: limitNum,
         orderBy,
         include: {
           user: {
@@ -1316,7 +1363,12 @@ const getMyComments = async (req, res, next) => {
       sortOrder = 'desc'
     } = req.query;
     
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const validSortBy = ['createdAt', 'updatedAt', 'content'].includes(sortBy) ? sortBy : 'createdAt';
+    const validSortOrder = ['asc', 'desc'].includes(sortOrder) ? sortOrder : 'desc';
 
     // 构建查询条件
     const where = { userId };
@@ -1386,7 +1438,12 @@ const getReports = async (req, res, next) => {
       sortOrder = 'desc'
     } = req.query;
     
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const validSortBy = ['createdAt', 'updatedAt'].includes(sortBy) ? sortBy : 'createdAt';
+    const validSortOrder = ['asc', 'desc'].includes(sortOrder) ? sortOrder : 'desc';
 
     const where = {};
     if (status !== 'all') {
@@ -1394,13 +1451,13 @@ const getReports = async (req, res, next) => {
     }
 
     const orderBy = {};
-    orderBy[sortBy] = sortOrder;
+    orderBy[validSortBy] = validSortOrder;
 
-    const [reports, total] = await Promise.all([
-      prisma.commentReport.findMany({
+    const [comments, total] = await Promise.all([
+      prisma.comment.findMany({
         where,
         skip,
-        take: parseInt(limit),
+        take: limitNum,
         orderBy,
         include: {
           Comment: {
@@ -1462,10 +1519,24 @@ const handleReport = async (req, res, next) => {
       }
     });
 
-    // 如果采取行动删除评论
+    // 如果采取行动删除评论（使用事务级联清理）
     if (action === 'delete' && report.Comment) {
-      await prisma.comment.delete({
-        where: { id: report.Comment.id }
+      const commentId = report.Comment.id;
+      await prisma.$transaction(async (tx) => {
+        // 删除回复
+        const replies = await tx.comment.findMany({ where: { parentId: commentId }, select: { id: true } });
+        if (replies.length > 0) {
+          const replyIds = replies.map(r => r.id);
+          await tx.commentLike.deleteMany({ where: { commentId: { in: replyIds } } });
+          await tx.commentEditHistory.deleteMany({ where: { commentId: { in: replyIds } } });
+          await tx.commentReport.deleteMany({ where: { commentId: { in: replyIds } } });
+          await tx.comment.deleteMany({ where: { parentId: commentId } });
+        }
+        // 删除主评论关联数据
+        await tx.commentLike.deleteMany({ where: { commentId } });
+        await tx.commentEditHistory.deleteMany({ where: { commentId } });
+        await tx.commentReport.deleteMany({ where: { commentId } });
+        await tx.comment.delete({ where: { id: commentId } });
       });
     }
 

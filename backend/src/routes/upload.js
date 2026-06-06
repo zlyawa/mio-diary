@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const uploadController = require('../controllers/uploadController');
 const { auth } = require('../middleware/auth');
-const upload = require('../middleware/upload').raw;
+const uploadWithValidation = require('../middleware/upload');
 
 /**
  * @route   POST /api/upload/image
@@ -13,7 +13,7 @@ const upload = require('../middleware/upload').raw;
  * @accepts image/jpeg, image/jpg, image/png, image/gif, image/webp, image/svg+xml
  * @maxSize 5MB
  */
-router.post('/image', auth, upload.single('image'), uploadController.uploadImage);
+router.post('/image', auth, uploadWithValidation, uploadController.uploadImage);
 
 /**
  * @route   DELETE /api/upload/image/:filename

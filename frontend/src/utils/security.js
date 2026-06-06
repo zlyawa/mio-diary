@@ -26,7 +26,7 @@ const PURIFY_CONFIG = {
     'data-*'
   ],
   // 允许URL协议
-  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|xxx):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|xxx):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
   // 强制所有链接在新标签页打开
   FORCE_BODY: true,
   // 移除空元素
@@ -171,7 +171,7 @@ export const escapeHTML = (text) => {
     '/': '&#x2F;'
   };
   
-  return text.replace(/[&<>"'\/]/g, char => htmlEscapes[char]);
+  return text.replace(/[&<>"'/]/g, char => htmlEscapes[char]);
 };
 
 /**
@@ -183,7 +183,7 @@ export const escapeHTML = (text) => {
 export const safeJSONParse = (jsonString, defaultValue = null) => {
   try {
     return JSON.parse(jsonString);
-  } catch (error) {
+  } catch {
     return defaultValue;
   }
 };
@@ -198,7 +198,7 @@ export const isSafeURL = (url) => {
   
   // 只允许相对路径或指定的安全协议
   const safePatterns = [
-    /^\/[^\/]/,  // 相对路径 /path
+    /^\/[^/]/,  // 相对路径 /path
     /^https?:\/\//i,  // http:// 或 https://
     /^mailto:/i,  // mailto:
     /^tel:/i  // tel:

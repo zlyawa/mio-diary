@@ -1,6 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../config/database');
 const emailService = require('./emailService');
-const prisma = new PrismaClient();
 
 /**
  * 创建站内通知
@@ -126,9 +125,9 @@ const sendAccountStatusNotification = async (userId, email, username, action, re
  */
 const sendPasswordResetNotification = async (userId, email, newPassword) => {
   const title = '您的密码已被重置';
-  const content = `管理员已重置您的密码。新密码为：${newPassword}。请尽快登录并修改密码。`;
+  const content = '管理员已重置您的密码。请使用新密码登录后立即修改密码。';
 
-  // 发送站内通知
+  // 发送站内通知（不包含明文密码）
   await notifyUser(userId, 'password_reset', title, content);
 
   // 发送邮件通知

@@ -55,42 +55,42 @@ model Cache {
 }
 
 model Category {
-  id             String     @id @default(uuid())
-  name           String
-  parentId       String?
-  userId         String
-  color          String?
-  createdAt      DateTime   @default(now())
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent         Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
-  children       Category[] @relation("CategoryToCategory")
-  diaries        Diary[]
+  id        String     @id @default(uuid())
+  name      String
+  parentId  String?
+  userId    String
+  color     String?
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryToCategory")
+  diaries   Diary[]
 
   @@unique([userId, name])
   @@index([userId])
 }
 
 model Comment {
-  id                 String               @id @default(uuid())
-  content            String
-  images             String?              // JSON数组存储图片URL
-  userId             String
-  diaryId            String
-  parentId           String?
-  status             String               @default("approved")
-  auditReason        String?
-  moderationSource   String?
-  moderatedAt        DateTime?
-  editCount          Int                  @default(0)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  parent             Comment?             @relation("CommentToComment", fields: [parentId], references: [id])
-  replies            Comment[]            @relation("CommentToComment")
-  diary              Diary                @relation(fields: [diaryId], references: [id], onDelete: Cascade)
-  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  editHistory        CommentEditHistory[]
-  likes              CommentLike[]
-  reports            CommentReport[]
+  id               String               @id @default(uuid())
+  content          String
+  userId           String
+  diaryId          String
+  parentId         String?
+  status           String               @default("approved")
+  auditReason      String?
+  moderationSource String?
+  moderatedAt      DateTime?
+  editCount        Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  images           String?
+  parent           Comment?             @relation("CommentToComment", fields: [parentId], references: [id])
+  replies          Comment[]            @relation("CommentToComment")
+  diary            Diary                @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  editHistory      CommentEditHistory[]
+  likes            CommentLike[]
+  reports          CommentReport[]
 
   @@index([createdAt])
   @@index([status])
@@ -190,14 +190,14 @@ model Diary {
 }
 
 model Favorite {
-  id             String          @id @default(uuid())
-  userId         String
-  diaryId        String
-  folderId       String?
-  createdAt      DateTime        @default(now())
-  folder         FavoriteFolder? @relation(fields: [folderId], references: [id])
-  diary          Diary           @relation(fields: [diaryId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String          @id @default(uuid())
+  userId    String
+  diaryId   String
+  folderId  String?
+  createdAt DateTime        @default(now())
+  folder    FavoriteFolder? @relation(fields: [folderId], references: [id])
+  diary     Diary           @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, diaryId])
   @@index([diaryId])

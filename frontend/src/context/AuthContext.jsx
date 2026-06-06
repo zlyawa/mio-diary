@@ -170,23 +170,41 @@ export const AuthProvider = ({ children }) => {
    * 初始化认证状态
    */
   useEffect(() => {
-    const token = getAccessToken();
-    if (token) {
-      // 检查Token是否需要刷新
-      if (shouldRefreshToken(token)) {
-        refreshAccessToken().then(() => {
-          if (getAccessToken()) {
-            fetchProfile();
+    const initAuth = async () => {
+      const accessToken = getAccessToken();
+      const refreshToken = getRefreshToken();
+
+      if (accessToken) {
+        // 有 Access Token
+        if (shouldRefreshToken(accessToken)) {
+          // Token 即将过期，先刷新
+          const success = await refreshAccessToken();
+          if (success) {
+            await fetchProfile();
           } else {
             setLoading(false);
           }
-        });
+        } else {
+          // Token 有效，直接获取用户信息
+          await fetchProfile();
+        }
+      } else if (refreshToken) {
+        // ✅ Access Token 不存在但 Refresh Token 存在，尝试恢复会话
+        const success = await refreshAccessToken();
+        if (success) {
+          await fetchProfile();
+        } else {
+          // Refresh Token 也失效，清除
+          clearTokens();
+          setLoading(false);
+        }
       } else {
-        fetchProfile();
+        // 都没有，未登录状态
+        setLoading(false);
       }
-    } else {
-      setLoading(false);
-    }
+    };
+
+    initAuth();
 
     // 清理定时器
     return () => {
@@ -194,7 +212,7 @@ export const AuthProvider = ({ children }) => {
         clearTimeout(refreshTimerRef.current);
       }
     };
-  }, [getAccessToken, shouldRefreshToken, refreshAccessToken, fetchProfile]);
+  }, [getAccessToken, getRefreshToken, shouldRefreshToken, refreshAccessToken, fetchProfile, clearTokens]);
 
   /**
    * 用户登录

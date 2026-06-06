@@ -1,14 +1,16 @@
 const path = require('path');
 const fs = require('fs').promises;
+const crypto = require('crypto');
 const uploadRaw = require('../middleware/upload').raw;
+
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/jpg',
   'image/png',
   'image/gif',
-  'image/webp',
-  'image/svg+xml'
+  'image/webp'
 ];
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -24,7 +26,7 @@ const isValidFileSize = (size) => {
 const generateSecureFilename = (originalname) => {
   const ext = path.extname(originalname).toLowerCase();
   const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
+  const random = crypto.randomBytes(8).toString('hex');
   return `${timestamp}-${random}${ext}`;
 };
 
@@ -37,19 +39,21 @@ const uploadImage = async (req, res, next) => {
       });
     }
 
-    // Multer 中间件已经处理了文件类型、大小验证和文件签名验证
-    // 这里直接使用 Multer 处理后的文件信息
-    
-    const imageUrl = `/uploads/${req.file.filename}`;
+    // 使用 upload 中间件处理后的图片 URL
+    const imageUrl = req.file.processedUrl || `/uploads/${req.file.filename}`;
+    const thumbnailUrl = req.file.thumbnailUrl || imageUrl;
 
     res.json({
       message: '图片上传成功',
       data: {
         imageUrl,
+        thumbnailUrl,
         filename: req.file.filename,
         originalName: req.file.originalname,
         mimetype: req.file.mimetype,
         size: req.file.size,
+        width: req.file.width,
+        height: req.file.height,
         sizeFormatted: formatFileSize(req.file.size),
         uploadDate: new Date().toISOString(),
       },
@@ -82,7 +86,16 @@ const deleteImage = async (req, res, next) => {
     }
 
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.\-_]/g, '');
-    const filePath = path.join(__dirname, '../../uploads', sanitizedFilename);
+    const filePath = path.join(UPLOADS_DIR, sanitizedFilename);
+
+    // 防止路径遍历攻击
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(UPLOADS_DIR)) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: '无效的文件名'
+      });
+    }
 
     try {
       await fs.access(filePath);

@@ -118,7 +118,7 @@ const MyComments = lazy(() => import('./pages/MyComments'));
 // 加载组件
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center">
-    <LoadingSpinner size="large" />
+    <LoadingSpinner size="lg" />
   </div>
 );
 

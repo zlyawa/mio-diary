@@ -25,7 +25,7 @@ const Favorites = () => {
   /**
    * 获取收藏列表
    */
-  const fetchFavorites = useCallback(async (reset = false) => {
+  const fetchFavorites = useCallback(async (reset = false, targetPage) => {
     // 未登录时不请求
     if (!isAuthenticated) {
       setLoading(false);
@@ -34,7 +34,7 @@ const Favorites = () => {
     
     try {
       setLoading(true);
-      const currentPage = reset ? 1 : page;
+      const currentPage = reset ? 1 : (targetPage !== undefined ? targetPage : page);
       
       const params = {
         page: currentPage,
@@ -111,6 +111,7 @@ const Favorites = () => {
       
       setFavorites(prev => prev.filter(f => f.id !== favoriteId));
     } catch (err) {
+      console.error('取消收藏失败:', err);
       toast.error('取消收藏失败');
     }
   };
@@ -119,8 +120,9 @@ const Favorites = () => {
    * 加载更多
    */
   const loadMore = () => {
-    setPage(prev => prev + 1);
-    fetchFavorites();
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchFavorites(false, nextPage);
   };
 
   return (

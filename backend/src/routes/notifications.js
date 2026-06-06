@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../config/database');
 const { auth } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 /**
  * 获取当前用户的通知列表

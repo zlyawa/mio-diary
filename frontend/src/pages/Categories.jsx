@@ -470,7 +470,7 @@ const Categories = () => {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
           {isLoading ? (
             <div className="p-12 flex justify-center">
-              <LoadingSpinner size="large" />
+              <LoadingSpinner size="lg" />
             </div>
           ) : categories.length > 0 ? (
             <div className="p-4">

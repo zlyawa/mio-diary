@@ -257,7 +257,7 @@ const MyComments = () => {
                           {/* 关联日记 */}
                           {comment.diary && (
                             <Link
-                              to={`/diary/${comment.diary.id}`}
+                              to={`/diaries/${comment.diary.id}`}
                               className="inline-flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
                             >
                               <FileText className="w-4 h-4" />

@@ -71,9 +71,10 @@ const validatePasswordStrength = (password) => {
 // 生成随机默认用户名
 const generateDefaultUsername = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const randomBytes = require('crypto').randomBytes(6);
   let randomStr = '';
   for (let i = 0; i < 6; i++) {
-    randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
+    randomStr += chars.charAt(randomBytes[i] % chars.length);
   }
   return `Mio用户_${randomStr}`;
 };
@@ -97,273 +98,169 @@ const clearLoginAttempts = async (identifier) => {
   await rateLimiter.clearLoginAttempts(identifier);
 };
 
-// 发送验证码
-const sendVerificationCode = async (req, res, next) => {
-  try {
-    const { email, captchaId, captchaInput } = req.body;
+/**
+ * 核心验证码发送逻辑
+ * @param {Object} params - 参数
+ * @param {string} params.email - 邮箱
+ * @param {string} params.captchaId - 图片验证码ID
+ * @param {string} params.captchaInput - 图片验证码输入
+ * @param {string} params.purpose - 用途: 'register' | 'reset-password'
+ */
+const sendVerificationCodeCore = async ({ email, captchaId, captchaInput, purpose = 'register' }) => {
+  // 验证图片验证码
+  if (!captchaId || !captchaInput) {
+    return { success: false, status: 400, error: 'ValidationError', message: '请提供图片验证码' };
+  }
 
-    // 验证图片验证码
-    if (!captchaId || !captchaInput) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '请提供图片验证码'
-      });
+  const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
+  if (!captchaValidation.valid) {
+    return { success: false, status: 400, error: 'ValidationError', message: captchaValidation.message };
+  }
+
+  if (!email) {
+    return { success: false, status: 400, error: 'ValidationError', message: '请提供邮箱' };
+  }
+
+  const sanitizedEmail = sanitizeInput(email.toLowerCase());
+
+  if (!validateEmail(sanitizedEmail)) {
+    return { success: false, status: 400, error: 'ValidationError', message: '邮箱格式不正确' };
+  }
+
+  // 检查发送频率限制
+  const rateCheck = await rateLimiter.checkCodeSendRate(sanitizedEmail, {
+    maxAttempts: MAX_SEND_ATTEMPTS,
+    cooldownSeconds: SEND_COOLDOWN,
+  });
+
+  if (!rateCheck.allowed) {
+    return { success: false, status: 429, error: 'TooManyRequests', message: rateCheck.message };
+  }
+
+  // 根据目的检查邮箱
+  const existingUser = await prisma.user.findFirst({
+    where: { email: sanitizedEmail },
+  });
+
+  if (purpose === 'reset-password') {
+    // 重置密码：邮箱必须存在
+    if (!existingUser) {
+      return { success: false, status: 404, error: 'NotFoundError', message: '该邮箱未注册' };
     }
-
-    const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
-    if (!captchaValidation.valid) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: captchaValidation.message
-      });
-    }
-
-    if (!email) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '请提供邮箱'
-      });
-    }
-
-    const sanitizedEmail = sanitizeInput(email.toLowerCase());
-
-    if (!validateEmail(sanitizedEmail)) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '邮箱格式不正确'
-      });
-    }
-
-    // 检查发送频率限制 - 使用 rateLimiter
-    const rateCheck = await rateLimiter.checkCodeSendRate(sanitizedEmail, {
-      maxAttempts: MAX_SEND_ATTEMPTS,
-      cooldownSeconds: SEND_COOLDOWN,
-    });
-
-    if (!rateCheck.allowed) {
-      return res.status(429).json({
-        error: 'TooManyRequests',
-        message: rateCheck.message
-      });
-    }
-
-    // 检查邮箱是否已存在
-    const existingUser = await prisma.user.findFirst({
-      where: { email: sanitizedEmail },
-    });
-
+  } else {
+    // 注册（默认）：邮箱不能已存在
     if (existingUser) {
-      return res.status(409).json({
-        error: 'DuplicateError',
-        message: '邮箱已被使用'
-      });
+      return { success: false, status: 409, error: 'DuplicateError', message: '邮箱已被使用' };
     }
+  }
 
-    // 检查是否启用邮箱验证
-    const config = await getEmailConfig();
-    if (!config.enableEmailVerify) {
-      return res.status(400).json({
-        error: 'FeatureDisabled',
-        message: '邮箱验证功能未启用'
-      });
-    }
+  // 检查是否启用邮箱验证
+  const config = await getEmailConfig();
+  if (!config.enableEmailVerify) {
+    return { success: false, status: 400, error: 'FeatureDisabled', message: '邮箱验证功能未启用' };
+  }
 
-    // 生成验证码
-    const code = generateVerificationCode();
+  // 生成验证码
+  const code = generateVerificationCode();
 
-    // 存储验证码 - 使用 cacheService
-    await cacheService.set(`verify_code:${sanitizedEmail}`, { code }, CODE_EXPIRY);
+  // 存储验证码
+  await cacheService.set(`verify_code:${sanitizedEmail}`, { code }, CODE_EXPIRY);
 
-    // 记录发送 - 使用 rateLimiter
-    await rateLimiter.recordCodeSend(sanitizedEmail, {
-      maxAttempts: MAX_SEND_ATTEMPTS,
-      windowSeconds: 3600,
-    });
+  // 记录发送
+  await rateLimiter.recordCodeSend(sanitizedEmail, {
+    maxAttempts: MAX_SEND_ATTEMPTS,
+    windowSeconds: 3600,
+  });
 
-    // 发送验证码邮件
-    try {
-      await sendEmail(sanitizedEmail, 'verification', { code });
-      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}`);
-    } catch (emailError) {
-      console.error('[验证码发送失败]', emailError.message);
-      // 即使邮件发送失败，也返回成功（测试环境可能没有SMTP）
-    }
+  // 发送验证码邮件
+  try {
+    await sendEmail(sanitizedEmail, 'verification', { code });
+    console.log(`[验证码发送] 邮箱: ${sanitizedEmail}, 用途: ${purpose}`);
+  } catch (emailError) {
+    console.error('[验证码发送失败]', emailError.message);
+  }
 
-    // 生成新的图片验证码供注册时使用
-    const newCaptcha = svgCaptcha.create({
-      size: 4,
-      ignoreChars: '0o1iIl',
-      noise: 2,
-      color: true,
-      background: '#f3f4f6',
-      width: 120,
-      height: 40,
-      fontSize: 36
-    });
-    const newCaptchaId = Date.now().toString() + Math.random().toString(36).substring(2);
+  // 生成新的图片验证码
+  const newCaptcha = svgCaptcha.create({
+    size: 4,
+    ignoreChars: '0o1iIl',
+    noise: 2,
+    color: true,
+    background: '#f3f4f6',
+    width: 120,
+    height: 40,
+    fontSize: 36
+  });
+  const newCaptchaId = require('crypto').randomBytes(16).toString('hex');
 
-    // 存储图片验证码 - 使用 cacheService
-    await cacheService.set(`captcha:${newCaptchaId}`, {
-      code: newCaptcha.text.toLowerCase()
-    }, CAPTCHA_EXPIRY);
+  await cacheService.set(`captcha:${newCaptchaId}`, {
+    code: newCaptcha.text.toLowerCase()
+  }, CAPTCHA_EXPIRY);
 
-    // 获取当前发送次数
-    const sendRecord = await cacheService.get(`code_send:${sanitizedEmail}`);
-    const currentSendCount = sendRecord?.count || 1;
+  // 获取当前发送次数
+  const sendRecord = await cacheService.get(`code_send:${sanitizedEmail}`);
+  const currentSendCount = sendRecord?.count || 1;
 
-    res.json({
+  return {
+    success: true,
+    data: {
       message: '验证码已发送',
-      expiry: CODE_EXPIRY, // 返回过期时间（秒）
+      expiry: CODE_EXPIRY,
       remainingAttempts: MAX_SEND_ATTEMPTS - currentSendCount,
-      // 返回新的图片验证码供注册时使用
       newCaptcha: {
         id: newCaptchaId,
         svg: newCaptcha.data
       }
+    }
+  };
+};
+
+// 发送验证码（注册专用，兼容旧接口）
+const sendVerificationCode = async (req, res, next) => {
+  try {
+    const { email, captchaId, captchaInput } = req.body;
+    
+    const result = await sendVerificationCodeCore({
+      email,
+      captchaId,
+      captchaInput,
+      purpose: 'register'
     });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        error: result.error,
+        message: result.message
+      });
+    }
+
+    res.json(result.data);
   } catch (error) {
-    console.error(`[发送验证码错误] 邮箱: ${typeof sanitizedEmail !== 'undefined' ? sanitizedEmail : 'unknown'}, 错误: ${error.message}`);
+    console.error(`[发送验证码错误] 错误: ${error.message}`);
     next(error);
   }
 };
 
-// 发送验证码（带图片验证码校验）
+// 发送验证码（带用途参数）
 const sendVerificationCodeWithCaptcha = async (req, res, next) => {
   try {
     const { email, captchaId, captchaInput, purpose } = req.body;
 
-    console.log('[发送验证码] 收到请求:', JSON.stringify({
+    const result = await sendVerificationCodeCore({
       email,
       captchaId,
       captchaInput,
-      purpose,
-      captchaIdType: typeof captchaId,
-      captchaInputType: typeof captchaInput
-    }));
-
-    // 验证图片验证码
-    if (!captchaId || !captchaInput) {
-      console.log('[发送验证码] 验证码缺失:', { hasCaptchaId: !!captchaId, hasCaptchaInput: !!captchaInput });
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '请提供图片验证码'
-      });
-    }
-
-    const captchaValidation = await verifyImageCaptcha(captchaId, captchaInput);
-    if (!captchaValidation.valid) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: captchaValidation.message
-      });
-    }
-
-    if (!email) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '请提供邮箱'
-      });
-    }
-
-    const sanitizedEmail = sanitizeInput(email.toLowerCase());
-
-    if (!validateEmail(sanitizedEmail)) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: '邮箱格式不正确'
-      });
-    }
-
-    // 检查发送频率限制 - 使用 rateLimiter
-    const rateCheck = await rateLimiter.checkCodeSendRate(sanitizedEmail, {
-      maxAttempts: MAX_SEND_ATTEMPTS,
-      cooldownSeconds: SEND_COOLDOWN,
+      purpose: purpose || 'register'
     });
 
-    if (!rateCheck.allowed) {
-      return res.status(429).json({
-        error: 'TooManyRequests',
-        message: rateCheck.message
+    if (!result.success) {
+      return res.status(result.status).json({
+        error: result.error,
+        message: result.message
       });
     }
 
-    // 根据目的检查邮箱
-    const existingUser = await prisma.user.findFirst({
-      where: { email: sanitizedEmail },
-    });
-
-    if (purpose === 'reset-password') {
-      // 重置密码：邮箱必须存在
-      if (!existingUser) {
-        return res.status(404).json({
-          error: 'NotFoundError',
-          message: '该邮箱未注册'
-        });
-      }
-    } else {
-      // 注册（默认）：邮箱不能已存在
-      if (existingUser) {
-        return res.status(409).json({
-          error: 'DuplicateError',
-          message: '邮箱已被使用'
-        });
-      }
-    }
-
-    // 检查是否启用邮箱验证
-    const config = await getEmailConfig();
-    if (!config.enableEmailVerify) {
-      return res.status(400).json({
-        error: 'FeatureDisabled',
-        message: '邮箱验证功能未启用'
-      });
-    }
-
-    // 生成验证码
-    const code = generateVerificationCode();
-
-    // 存储验证码 - 使用 cacheService
-    await cacheService.set(`verify_code:${sanitizedEmail}`, { code }, CODE_EXPIRY);
-
-    // 记录发送 - 使用 rateLimiter
-    await rateLimiter.recordCodeSend(sanitizedEmail, {
-      maxAttempts: MAX_SEND_ATTEMPTS,
-      windowSeconds: 3600,
-    });
-
-    // 发送验证码邮件
-    try {
-      await sendEmail(sanitizedEmail, 'verification', { code });
-      console.log(`[验证码发送] 邮箱: ${sanitizedEmail}`);
-    } catch (emailError) {
-      console.error('[验证码发送失败]', emailError.message);
-    }
-
-    // 生成新的图片验证码供注册时使用
-    const newCaptcha = svgCaptcha.create({
-      size: 4,
-      ignoreChars: '0o1iIl',
-      noise: 2,
-      color: true,
-      background: '#f3f4f6',
-      width: 120,
-      height: 40,
-      fontSize: 36
-    });
-    const newCaptchaId = Date.now().toString() + Math.random().toString(36).substring(2);
-
-    // 存储图片验证码 - 使用 cacheService
-    await cacheService.set(`captcha:${newCaptchaId}`, {
-      code: newCaptcha.text.toLowerCase()
-    }, CAPTCHA_EXPIRY);
-
-    res.json({
-      message: '验证码已发送',
-      newCaptcha: {
-        id: newCaptchaId,
-        svg: newCaptcha.data
-      }
-    });
+    res.json(result.data);
   } catch (error) {
     console.error(`[发送验证码错误] 错误: ${error.message}`);
     next(error);
@@ -402,7 +299,7 @@ const generateImageCaptcha = async (req, res) => {
       fontSize: 36
     });
 
-    const captchaId = Date.now().toString() + Math.random().toString(36).substring(2);
+    const captchaId = require('crypto').randomBytes(16).toString('hex');
 
     // 存储验证码 - 使用 cacheService
     await cacheService.set(`captcha:${captchaId}`, {
@@ -426,26 +323,19 @@ const generateImageCaptcha = async (req, res) => {
 
 // 验证图片验证码 - 使用数据库持久化存储
 const verifyImageCaptcha = async (captchaId, code) => {
-  console.log('[验证码验证] captchaId:', captchaId, 'code:', code);
-
   const cacheKey = `captcha:${captchaId}`;
   const stored = await cacheService.get(cacheKey);
 
   if (!stored) {
-    console.log('[验证码验证] 验证码不存在');
     return { valid: false, message: '验证码不存在或已过期' };
   }
 
-  console.log('[验证码验证] 存储的code:', stored.code, '输入的code:', code.toLowerCase());
-
   if (stored.code !== code.toLowerCase()) {
-    console.log('[验证码验证] 验证码不匹配');
     return { valid: false, message: '验证码错误' };
   }
 
   // 验证成功，删除验证码
   await cacheService.del(cacheKey);
-  console.log('[验证码验证] 验证成功');
   return { valid: true };
 };
 
@@ -488,9 +378,7 @@ const register = async (req, res, next) => {
     }
 
     // 验证图片验证码
-    console.log('[注册] 验证码检查:', { captchaId, captchaInput, captchaIdType: typeof captchaId, captchaInputType: typeof captchaInput });
     if (!captchaId || !captchaInput) {
-      console.log('[注册] 验证码缺失:', { hasCaptchaId: !!captchaId, hasCaptchaInput: !!captchaInput });
       return res.status(400).json({
         error: 'ValidationError',
         message: '请提供图片验证码'
@@ -596,7 +484,8 @@ const register = async (req, res, next) => {
       user,
     });
   } catch (error) {
-    console.error(`[注册错误] 邮箱: ${sanitizedEmail}, 错误: ${error.message}`);
+    const safeEmail = typeof sanitizedEmail !== 'undefined' ? sanitizedEmail : 'unknown';
+    console.error(`[注册错误] 邮箱: ${safeEmail}, 错误: ${error.message}`);
     next(error);
   }
 };
@@ -869,6 +758,9 @@ const updateUsername = async (req, res, next) => {
       message: '用户名修改成功',
       user,
     });
+
+    // 清除会话缓存，使用户名变更立即生效
+    await clearUserSessionCache(userId).catch(() => {});
   } catch (error) {
     console.error(`[修改用户名错误] 用户: ${req.user.id}, 错误: ${error.message}`);
     next(error);

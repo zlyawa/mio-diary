@@ -556,12 +556,16 @@
   border-radius: 0.75rem;
   border: 1px solid #e5e7eb;
   transition: background 0.15s ease, border-color 0.15s ease;
-  animation: fadeSlideIn 0.3s ease backwards;
 }
 
 .dark .comment-item {
   background: #111827;
   border-color: #374151;
+}
+
+/* 新评论添加时的动画 */
+.comment-item.animate-in {
+  animation: fadeSlideIn 0.3s ease backwards;
 }
 
 .comment-item:hover {
@@ -1059,15 +1063,15 @@
   }
 }
 
-/* 依次进入动画 */
-.comment-item:nth-child(1) { animation-delay: 0ms; }
-.comment-item:nth-child(2) { animation-delay: 40ms; }
-.comment-item:nth-child(3) { animation-delay: 80ms; }
-.comment-item:nth-child(4) { animation-delay: 120ms; }
-.comment-item:nth-child(5) { animation-delay: 160ms; }
-.comment-item:nth-child(6) { animation-delay: 200ms; }
-.comment-item:nth-child(7) { animation-delay: 240ms; }
-.comment-item:nth-child(8) { animation-delay: 280ms; }
+/* 依次进入动画 - 只在明确添加 animate-in 类时生效 */
+.comment-item.animate-in:nth-child(1) { animation-delay: 0ms; }
+.comment-item.animate-in:nth-child(2) { animation-delay: 40ms; }
+.comment-item.animate-in:nth-child(3) { animation-delay: 80ms; }
+.comment-item.animate-in:nth-child(4) { animation-delay: 120ms; }
+.comment-item.animate-in:nth-child(5) { animation-delay: 160ms; }
+.comment-item.animate-in:nth-child(6) { animation-delay: 200ms; }
+.comment-item.animate-in:nth-child(7) { animation-delay: 240ms; }
+.comment-item.animate-in:nth-child(8) { animation-delay: 280ms; }
 
 /* ============================================
    响应式设计

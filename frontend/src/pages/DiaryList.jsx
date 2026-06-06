@@ -1,23 +1,15 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, Calendar, Tag, Filter, Grid3X3, List, Trash2, X, ChevronDown, Folder } from 'lucide-react';
+import { Search, Plus, Calendar, Tag, Filter, Trash2, X, Folder } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
 import Skeleton from '../components/common/Skeleton';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import api from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
-import { getImageUrl } from '../utils/api';
-
-/**
- * API基础URL（用于API请求）
- */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 /**
  * 静态文件基础URL（用于访问上传的图片）
- * 注意：后端静态文件服务直接挂载在 /uploads 路径下，而不是在 /api 下
  */
 const UPLOAD_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -142,7 +134,7 @@ const DiaryList = () => {
       const params = { 
         page,
         sortBy: sortField,
-        order: sortOrder,
+        sortOrder: sortOrder,
       };
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (moodFilter) params.mood = moodFilter;
@@ -392,15 +384,34 @@ const DiaryList = () => {
             {/* 图片预览 */}
             {diary.images && diary.images.length > 0 && (
               <div className="mt-4 flex gap-2">
-                {diary.images.slice(0, 4).map((image, index) => (
-                  <img
-                    key={index}
-                    src={`${UPLOAD_BASE_URL}${image}`}
-                    alt=""
-                    loading="lazy"
-                    className="w-14 h-14 sm:w-12 sm:h-12 object-cover rounded-lg"
-                  />
-                ))}
+                {diary.images.slice(0, 4).map((image, index) => {
+                  // 生成缩略图 URL
+                  const getThumbnailUrl = (img) => {
+                    // 如果已经是 webp 格式，使用 _thumb.webp
+                    if (img.endsWith('.webp')) {
+                      return img.replace('.webp', '_thumb.webp');
+                    }
+                    // 其他格式尝试转换为缩略图
+                    return img.replace(/\.(jpg|jpeg|png|gif)$/i, '_thumb.webp');
+                  };
+                  const thumbUrl = getThumbnailUrl(image);
+                  
+                  return (
+                    <img
+                      key={index}
+                      src={`${UPLOAD_BASE_URL}${thumbUrl}`}
+                      alt=""
+                      loading="lazy"
+                      className="w-14 h-14 sm:w-12 sm:h-12 object-cover rounded-lg bg-gray-100 dark:bg-gray-700"
+                      onError={(e) => {
+                        // 缩略图加载失败，降级到原图
+                        if (e.target.src !== `${UPLOAD_BASE_URL}${image}`) {
+                          e.target.src = `${UPLOAD_BASE_URL}${image}`;
+                        }
+                      }}
+                    />
+                  );
+                })}
                 {diary.images.length > 4 && (
                   <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-600 dark:text-gray-400">
                     +{diary.images.length - 4}

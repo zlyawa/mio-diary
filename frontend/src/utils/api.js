@@ -227,7 +227,7 @@ api.interceptors.response.use(
 /**
  * 取消请求
  */
-const cancelRequest = (requestId) => {
+const cancelRequest = (_requestId) => {
   api.get('/cancel', {
     cancelToken: axios.CancelToken.source().token,
   });

@@ -36,18 +36,219 @@ import './CommentStyles.css';
 const DRAFT_STORAGE_KEY = 'comment_draft_';
 const DRAFT_EXPIRY = 24 * 60 * 60 * 1000; // 24小时过期
 
+// 工具函数：时间格式化
+const formatTime = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now - date;
+  
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
+  if (diff < 31536000000) return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+// 工具函数：Markdown 渲染
+const renderContent = (content) => {
+  if (!content) return { __html: '' };
+  
+  let html = content
+    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="comment-image" loading="lazy" />')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="comment-link">$1</a>')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="comment-link">$1</a>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/~~(.*?)~~/g, '<del>$1</del>')
+    .replace(/^>(.*$)/gm, '<blockquote class="comment-quote">$1</blockquote>')
+    .replace(/\n/g, '<br />');
+  
+  const sanitizedHtml = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['a', 'b', 'strong', 'i', 'em', 'del', 'code', 'pre', 'blockquote', 'br', 'img'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel', 'loading'],
+    ALLOW_DATA_ATTR: false,
+  });
+  
+  return { __html: sanitizedHtml };
+};
+
+// 生成缩略图 URL
+const getThumbnailUrl = (imagePath) => {
+  if (imagePath.endsWith('.webp')) {
+    return imagePath.replace('.webp', '_thumb.webp');
+  }
+  return imagePath.replace(/\.(jpg|jpeg|png|gif)$/i, '_thumb.webp');
+};
+
+// ========== 子组件：评论项（移到组件外部，确保 memo 正常工作）==========
+const CommentItem = memo(({ 
+  comment, 
+  isReply = false, 
+  depth = 0,
+  isLiked,
+  isLiking,
+  isAuthenticated,
+  currentUserId,
+  isAdmin,
+  onLike,
+  onReply,
+  onDelete,
+  onNavigate,
+  onLoadMoreReplies,
+  loadingReplies,
+}) => {
+  const maxDepth = 3;
+  const repliesItems = comment.replies?.items || [];
+
+  return (
+    <div 
+      className={`comment-item ${isReply ? 'comment-reply' : ''}`}
+      style={{ marginLeft: isReply ? Math.min(depth, maxDepth) * 20 : 0 }}
+    >
+      <div 
+        className="comment-avatar"
+        onClick={() => comment.user?.username && onNavigate(`/profile/${comment.user.username}`)}
+        style={{ cursor: comment.user?.username ? 'pointer' : 'default' }}
+        title={comment.user?.username ? `查看 ${comment.user?.username} 的主页` : undefined}
+      >
+        <img 
+          src={comment.user?.avatarUrl || `https://gravatar.com/avatar/${comment.user?.id}?d=mp`}
+          alt={comment.user?.username}
+          className="avatar-img"
+          loading="lazy"
+        />
+      </div>
+      
+      <div className="comment-content-wrapper">
+        <div className="comment-header">
+          <span className="comment-author">
+            {comment.user?.username || '匿名用户'}
+          </span>
+          {comment.user?.role === 'admin' && (
+            <span className="comment-badge admin">管理员</span>
+          )}
+          <span className="comment-time">{formatTime(comment.createdAt)}</span>
+        </div>
+        
+        <div 
+          className="comment-text"
+          dangerouslySetInnerHTML={renderContent(comment.content)}
+        />
+        
+        {comment.images && comment.images.length > 0 && (
+          <div className="comment-images">
+            {comment.images.map((img, idx) => (
+              <img 
+                key={idx}
+                src={getImageUrl(getThumbnailUrl(img))}
+                alt="评论图片"
+                className="comment-uploaded-image"
+                loading="lazy"
+                onError={(e) => {
+                  if (e.target.src !== getImageUrl(img)) {
+                    e.target.src = getImageUrl(img);
+                  }
+                }}
+              />
+            ))}
+          </div>
+        )}
+        
+        <div className="comment-actions">
+          <button 
+            className={`action-btn like ${isLiked ? 'liked' : ''}`}
+            onClick={() => onLike(comment.id)}
+            disabled={isLiking || !isAuthenticated}
+            title={isLiked ? '取消点赞' : '点赞'}
+          >
+            <Heart 
+              size={14} 
+              fill={isLiked ? 'currentColor' : 'none'}
+            />
+            <span>{comment.likeCount || 0}</span>
+          </button>
+          
+          {(!isReply || depth < maxDepth) && (
+            <button 
+              className="action-btn reply"
+              onClick={() => onReply(comment)}
+              disabled={!isAuthenticated}
+            >
+              <MessageSquare size={14} />
+              <span>回复</span>
+            </button>
+          )}
+          
+          {(isAuthenticated && (currentUserId === comment.userId || isAdmin)) && (
+            <button 
+              className="action-btn delete"
+              onClick={() => onDelete(comment.id)}
+            >
+              <Trash2 size={14} />
+              <span>删除</span>
+            </button>
+          )}
+        </div>
+
+        {repliesItems.length > 0 && (
+          <div className="replies-list">
+            {repliesItems.map(reply => (
+              <CommentItem 
+                key={reply.id} 
+                comment={reply} 
+                isReply={true}
+                depth={depth + 1}
+                isLiked={isLiked}
+                isLiking={isLiking}
+                isAuthenticated={isAuthenticated}
+                currentUserId={currentUserId}
+                isAdmin={isAdmin}
+                onLike={onLike}
+                onReply={onReply}
+                onDelete={onDelete}
+                onNavigate={onNavigate}
+              />
+            ))}
+            
+            {comment.replies?.hasMore && (
+              <button 
+                className="load-more-replies-btn"
+                onClick={() => onLoadMoreReplies(comment.id)}
+                disabled={loadingReplies.has(comment.id)}
+              >
+                {loadingReplies.has(comment.id) ? (
+                  <Loader2 size={14} className="spin" />
+                ) : (
+                  <ChevronDown size={14} />
+                )}
+                <span>{loadingReplies.has(comment.id) ? '加载中...' : `还有 ${comment.replies.total - repliesItems.length} 条回复`}</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // 自定义比较函数：只有真正影响渲染的 props 变化时才重新渲染
+  return (
+    prevProps.comment.id === nextProps.comment.id &&
+    prevProps.comment.likeCount === nextProps.comment.likeCount &&
+    prevProps.isLiked === nextProps.isLiked &&
+    prevProps.isLiking === nextProps.isLiking &&
+    prevProps.depth === nextProps.depth &&
+    prevProps.isReply === nextProps.isReply &&
+    prevProps.loadingReplies === nextProps.loadingReplies
+  );
+});
+
+CommentItem.displayName = 'CommentItem';
+
 /**
  * 评论区域组件
- * 功能特性：
- * - 评论列表展示（树形结构，支持多级回复）
- * - 发表评论、回复
- * - 点赞功能（乐观更新 + 动画）
- * - 删除评论
- * - 图片上传
- * - 加载更多/无限滚动
- * - 评论排序（最新、最热）
- * - 草稿自动保存
- * - Markdown渲染
  */
 const CommentSection = ({ diaryId }) => {
   const { user, isAuthenticated } = useAuth();
@@ -62,14 +263,15 @@ const CommentSection = ({ diaryId }) => {
   const [error, setError] = useState('');
   const [content, setContent] = useState('');
   const [replyTo, setReplyTo] = useState(null);
-  const [pendingImages, setPendingImages] = useState([]); // 待上传的图片预览
-  const [sortBy, setSortBy] = useState('newest'); // 'newest' | 'hottest'
+  const [pendingImages, setPendingImages] = useState([]);
+  const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
-  const [likedComments, setLikedComments] = useState(new Set()); // 乐观更新的点赞状态
-  const [likingInProgress, setLikingInProgress] = useState(new Set()); // 防止重复点击
+  const [likedComments, setLikedComments] = useState(new Set());
+  const [likingInProgress, setLikingInProgress] = useState(new Set());
   const [showReplyPreview, setShowReplyPreview] = useState(false);
+  const [loadingReplies, setLoadingReplies] = useState(new Set());
   
   // Refs
   const fileInputRef = useRef(null);
@@ -85,14 +287,12 @@ const CommentSection = ({ diaryId }) => {
     
     const sorted = [...comments];
     if (sortBy === 'hottest') {
-      // 按点赞数排序，同时考虑时间因素
       sorted.sort((a, b) => {
         const scoreA = (a.likeCount || 0) + (a.replyCount || 0) * 0.5;
         const scoreB = (b.likeCount || 0) + (b.replyCount || 0) * 0.5;
         return scoreB - scoreA;
       });
     }
-    // 'newest' 默认就是时间顺序
     return sorted;
   }, [comments, sortBy]);
 
@@ -107,9 +307,7 @@ const CommentSection = ({ diaryId }) => {
 
   // ========== 数据获取 ==========
   const fetchComments = useCallback(async (pageNum = 1, append = false) => {
-    // 验证diaryId存在
     if (!diaryId) {
-      console.warn('[CommentSection] diaryId 为空，跳过获取评论');
       setLoading(false);
       return;
     }
@@ -130,7 +328,6 @@ const CommentSection = ({ diaryId }) => {
         }
       });
       
-      // API 响应格式: { success: true, data: { comments: [...], pagination: {...} } }
       const responseData = response.data?.data || response.data;
       
       if (responseData?.comments) {
@@ -145,7 +342,6 @@ const CommentSection = ({ diaryId }) => {
         setHasMore(responseData.pagination?.hasMore || false);
         setTotalCount(responseData.pagination?.total || newComments.length);
         
-        // 初始化已点赞集合
         const liked = new Set();
         newComments.forEach(c => {
           if (c.isLiked) liked.add(c.id);
@@ -159,7 +355,6 @@ const CommentSection = ({ diaryId }) => {
       }
     } catch (err) {
       console.error('获取评论失败:', err);
-      // 认证错误静默处理，不显示错误提示
       if (!err.isAuthError) {
         setError('获取评论失败，请稍后重试');
       }
@@ -208,11 +403,9 @@ const CommentSection = ({ diaryId }) => {
       const draft = localStorage.getItem(key);
       if (draft) {
         const { content: savedContent, timestamp, replyTo: savedReplyTo } = JSON.parse(draft);
-        // 检查是否过期
         if (Date.now() - timestamp < DRAFT_EXPIRY && savedContent?.trim()) {
           setContent(savedContent);
           if (savedReplyTo) {
-            // 尝试恢复回复对象
             const parentComment = comments.find(c => c.id === savedReplyTo.id);
             if (parentComment) {
               setReplyTo(parentComment);
@@ -246,14 +439,12 @@ const CommentSection = ({ diaryId }) => {
     }
   }, [content, replyTo, diaryId, isAuthenticated]);
 
-  // 加载草稿
   useEffect(() => {
     if (!loading && comments.length > 0) {
       loadDraft();
     }
   }, [loading, comments.length, loadDraft]);
 
-  // 自动保存草稿（防抖）
   useEffect(() => {
     if (draftSaveTimerRef.current) {
       clearTimeout(draftSaveTimerRef.current);
@@ -278,7 +469,6 @@ const CommentSection = ({ diaryId }) => {
       setSubmitting(true);
       setError('');
 
-      // 使用 FormData 支持图片上传
       const formData = new FormData();
       formData.append('diaryId', diaryId);
       formData.append('content', content.trim());
@@ -286,7 +476,6 @@ const CommentSection = ({ diaryId }) => {
         formData.append('parentId', replyTo.id);
       }
       
-      // 添加待上传的图片（只支持一张）
       if (pendingImages.length > 0) {
         formData.append('image', pendingImages[0].file);
       }
@@ -300,19 +489,13 @@ const CommentSection = ({ diaryId }) => {
       setPendingImages([]);
       localStorage.removeItem(`${DRAFT_STORAGE_KEY}${diaryId}`);
       
-      // 根据审核状态显示不同提示
       if (responseData?.pending) {
-        // 需要管理员审核
         toast.warning('评论已提交，等待管理员审核通过后显示');
       } else {
-        // AI审核通过
         toast.success('评论发布成功！');
-        
-        // 重新获取评论列表
         await fetchComments(1, false);
         setPage(1);
         
-        // 平滑滚动到新评论
         setTimeout(() => {
           if (commentsListRef.current) {
             const newComment = commentsListRef.current.querySelector('.comment-item:first-child');
@@ -333,14 +516,12 @@ const CommentSection = ({ diaryId }) => {
     }
   }, [content, diaryId, replyTo, fetchComments, pendingImages]);
 
-  // ========== 点赞功能（乐观更新） ==========
+  // ========== 点赞功能 ==========
   const handleLike = useCallback(async (commentId) => {
-    // 防止重复点击
     if (likingInProgress.has(commentId)) return;
     
     const isLiked = likedComments.has(commentId);
     
-    // 乐观更新UI
     setLikingInProgress(prev => new Set(prev).add(commentId));
     setLikedComments(prev => {
       const next = new Set(prev);
@@ -352,12 +533,10 @@ const CommentSection = ({ diaryId }) => {
       return next;
     });
     
-    // 更新评论列表中的点赞数
     setComments(prev => prev.map(c => {
       if (c.id === commentId) {
         return { ...c, likeCount: (c.likeCount || 0) + (isLiked ? -1 : 1), isLiked: !isLiked };
       }
-      // 更新回复中的点赞
       if (c.replies?.items) {
         return {
           ...c,
@@ -376,8 +555,6 @@ const CommentSection = ({ diaryId }) => {
 
     try {
       const response = await api.post(`/comments/${commentId}/like`);
-      
-      // 如果服务器返回了准确的点赞数，更新它
       const responseData = response.data?.data || response.data;
       if (responseData?.likeCount !== undefined) {
         setComments(prev => prev.map(c => {
@@ -400,7 +577,6 @@ const CommentSection = ({ diaryId }) => {
       }
     } catch (err) {
       console.error('点赞失败:', err);
-      // 回滚乐观更新
       setLikedComments(prev => {
         const next = new Set(prev);
         if (isLiked) {
@@ -439,6 +615,50 @@ const CommentSection = ({ diaryId }) => {
     }
   }, [likedComments, likingInProgress]);
 
+  // ========== 加载更多回复 ==========
+  const loadMoreReplies = useCallback(async (commentId) => {
+    if (loadingReplies.has(commentId)) return;
+    
+    const comment = comments.find(c => c.id === commentId);
+    const currentCount = comment?.replies?.items?.length || 0;
+    const page = Math.floor(currentCount / 10) + 1;
+    
+    setLoadingReplies(prev => new Set(prev).add(commentId));
+    
+    try {
+      const response = await api.get(`/comments/${commentId}/replies`, {
+        params: { page, limit: 10 }
+      });
+      
+      const responseData = response.data?.data || response.data;
+      const newReplies = responseData?.replies || responseData?.items || [];
+      const hasMore = responseData?.pagination?.hasMore || false;
+      
+      setComments(prev => prev.map(c => {
+        if (c.id === commentId) {
+          return {
+            ...c,
+            replies: {
+              ...c.replies,
+              items: [...(c.replies?.items || []), ...newReplies],
+              hasMore
+            }
+          };
+        }
+        return c;
+      }));
+    } catch (err) {
+      console.error('加载回复失败:', err);
+      setError('加载回复失败，请重试');
+    } finally {
+      setLoadingReplies(prev => {
+        const next = new Set(prev);
+        next.delete(commentId);
+        return next;
+      });
+    }
+  }, [comments, loadingReplies]);
+
   // ========== 删除评论 ==========
   const handleDelete = useCallback(async (commentId) => {
     if (!window.confirm('确定要删除这条评论吗？')) return;
@@ -446,13 +666,10 @@ const CommentSection = ({ diaryId }) => {
     try {
       await api.delete(`/comments/${commentId}`);
       
-      // 乐观删除
       setComments(prev => {
         const newComments = [];
         prev.forEach(c => {
-          if (c.id === commentId) return; // 跳过被删除的评论
-          
-          // 检查回复中是否有被删除的
+          if (c.id === commentId) return;
           if (c.replies?.items) {
             c.replies.items = c.replies.items.filter(r => r.id !== commentId);
             c.replies.total = c.replies.items.length;
@@ -466,20 +683,17 @@ const CommentSection = ({ diaryId }) => {
     } catch (err) {
       console.error('删除评论失败:', err);
       setError('删除失败，请重试');
-      // 失败后重新获取
       fetchComments(1, false);
     }
   }, [fetchComments]);
 
-  // ========== 图片选择（只预览，提交时一起上传） ==========
+  // ========== 图片选择 ==========
   const handleImageUpload = useCallback((e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
-    // 只取第一张图片
     const file = files[0];
     
-    // 验证文件类型和大小
     if (!file.type.startsWith('image/')) {
       setError('请选择有效的图片文件');
       return;
@@ -489,17 +703,14 @@ const CommentSection = ({ diaryId }) => {
       return;
     }
 
-    // 创建预览URL
     const previewUrl = URL.createObjectURL(file);
     setPendingImages([{ file, previewUrl, name: file.name }]);
     
-    // 清空input以便可以重复选择同一文件
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }, []);
 
-  // 移除待上传的图片
   const handleRemovePendingImage = useCallback(() => {
     setPendingImages(prev => {
       prev.forEach(img => URL.revokeObjectURL(img.previewUrl));
@@ -512,7 +723,6 @@ const CommentSection = ({ diaryId }) => {
     setReplyTo(comment);
     setShowReplyPreview(true);
     
-    // 滚动到输入框
     setTimeout(() => {
       inputAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       textareaRef.current?.focus();
@@ -524,68 +734,7 @@ const CommentSection = ({ diaryId }) => {
     setShowReplyPreview(false);
   }, []);
 
-  // ========== 工具函数 ==========
-  const formatTime = useCallback((dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now - date;
-    
-    if (diff < 60000) {
-      return '刚刚';
-    }
-    if (diff < 3600000) {
-      return `${Math.floor(diff / 60000)}分钟前`;
-    }
-    if (diff < 86400000) {
-      return `${Math.floor(diff / 3600000)}小时前`;
-    }
-    if (diff < 604800000) {
-      return `${Math.floor(diff / 86400000)}天前`;
-    }
-    if (diff < 31536000000) {
-      return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-    }
-    
-    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
-  }, []);
-
-  // 增强的Markdown渲染（带XSS防护）
-  const renderContent = useCallback((content) => {
-    if (!content) return { __html: '' };
-    
-    let html = content
-      // 代码块 (```code```)
-      .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
-      // 行内代码 (`code`)
-      .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-      // 图片
-      .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="comment-image" loading="lazy" />')
-      // 链接
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="comment-link">$1</a>')
-      // 自动识别URL
-      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="comment-link">$1</a>')
-      // 粗体
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      // 斜体
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      // 删除线
-      .replace(/~~(.*?)~~/g, '<del>$1</del>')
-      // 引用
-      .replace(/^>(.*$)/gm, '<blockquote class="comment-quote">$1</blockquote>')
-      // 换行
-      .replace(/\n/g, '<br />');
-    
-    // 使用DOMPurify净化HTML，防止XSS攻击
-    const sanitizedHtml = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['a', 'b', 'strong', 'i', 'em', 'del', 'code', 'pre', 'blockquote', 'br', 'img'],
-      ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel', 'loading'],
-      ALLOW_DATA_ATTR: false,
-    });
-    
-    return { __html: sanitizedHtml };
-  }, []);
-
-  // 处理排序切换
+  // ========== 排序切换 ==========
   const handleSortChange = useCallback((newSort) => {
     if (newSort === sortBy) return;
     setSortBy(newSort);
@@ -594,138 +743,10 @@ const CommentSection = ({ diaryId }) => {
     fetchComments(1, false);
   }, [sortBy, fetchComments]);
 
-  // 重试加载
   const handleRetry = useCallback(() => {
     setError('');
     fetchComments(1, false);
   }, [fetchComments]);
-
-  // ========== 子组件：评论项 ==========
-  const CommentItem = memo(({ comment, isReply = false, depth = 0 }) => {
-    const isLiked = likedComments.has(comment.id);
-    const isLiking = likingInProgress.has(comment.id);
-    const maxDepth = 3; // 最大嵌套层级
-    const repliesItems = comment.replies?.items || [];
-
-    return (
-      <div 
-        className={`comment-item ${isReply ? 'comment-reply' : ''} ${isLiked ? 'just-liked' : ''}`}
-        style={{ marginLeft: isReply ? Math.min(depth, maxDepth) * 20 : 0 }}
-      >
-        <div 
-          className="comment-avatar"
-          onClick={() => comment.user?.username && navigate(`/profile/${comment.user.username}`)}
-          style={{ cursor: comment.user?.username ? 'pointer' : 'default' }}
-          title={comment.user?.username ? `查看 ${comment.user?.username} 的主页` : undefined}
-        >
-          <img 
-            src={comment.user?.avatarUrl || `https://gravatar.com/avatar/${comment.user?.id}?d=mp`}
-            alt={comment.user?.username}
-            className="avatar-img"
-            loading="lazy"
-          />
-        </div>
-        
-        <div className="comment-content-wrapper">
-          <div className="comment-header">
-            <span className="comment-author">
-              {comment.user?.username || '匿名用户'}
-            </span>
-            {comment.user?.role === 'admin' && (
-              <span className="comment-badge admin">管理员</span>
-            )}
-            <span className="comment-time">{formatTime(comment.createdAt)}</span>
-          </div>
-          
-          <div 
-            className="comment-text"
-            dangerouslySetInnerHTML={renderContent(comment.content)}
-          />
-          
-          {/* 评论图片 */}
-          {comment.images && comment.images.length > 0 && (
-            <div className="comment-images">
-              {comment.images.map((img, idx) => (
-                <img 
-                  key={idx}
-                  src={getImageUrl(img)}
-                  alt="评论图片"
-                  className="comment-uploaded-image"
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          )}
-          
-          <div className="comment-actions">
-            <button 
-              className={`action-btn like ${isLiked ? 'liked just-liked' : ''}`}
-              onClick={() => handleLike(comment.id)}
-              disabled={isLiking || !isAuthenticated}
-              title={isLiked ? '取消点赞' : '点赞'}
-            >
-              <Heart 
-                size={14} 
-                fill={isLiked ? 'currentColor' : 'none'}
-              />
-              <span>{comment.likeCount || 0}</span>
-            </button>
-            
-            {!isReply || depth < maxDepth ? (
-              <button 
-                className="action-btn reply"
-                onClick={() => handleReplyClick(comment)}
-                disabled={!isAuthenticated}
-              >
-                <MessageSquare size={14} />
-                <span>回复</span>
-              </button>
-            ) : null}
-            
-            {(isAuthenticated && (user?.id === comment.userId || user?.role === 'admin')) ? (
-              <button 
-                className="action-btn delete"
-                onClick={() => handleDelete(comment.id)}
-              >
-                <Trash2 size={14} />
-                <span>删除</span>
-              </button>
-            ) : null}
-          </div>
-
-          {/* 嵌套回复列表 */}
-          {repliesItems.length > 0 && (
-            <div className="replies-list">
-              {repliesItems.map(reply => (
-                <CommentItem 
-                  key={reply.id} 
-                  comment={reply} 
-                  isReply={true}
-                  depth={depth + 1}
-                />
-              ))}
-              
-              {/* 显示加载更多回复按钮 */}
-              {comment.replies?.hasMore && (
-                <button 
-                  className="load-more-replies-btn"
-                  onClick={() => {
-                    // 可以实现加载更多回复的功能
-                    console.log('Load more replies for comment:', comment.id);
-                  }}
-                >
-                  <ChevronDown size={14} />
-                  <span>还有 {comment.replies.total - repliesItems.length} 条回复</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  });
-
-  CommentItem.displayName = 'CommentItem';
 
   // ========== 渲染 ==========
   if (loading && comments.length === 0) {
@@ -750,7 +771,6 @@ const CommentSection = ({ diaryId }) => {
         <h3>评论</h3>
         <span className="comment-count">{totalCount || commentCount} 条</span>
         
-        {/* 排序选项 */}
         <div className="sort-options">
           <button 
             className={`sort-btn ${sortBy === 'newest' ? 'active' : ''}`}
@@ -785,7 +805,6 @@ const CommentSection = ({ diaryId }) => {
 
       {/* 评论输入框 */}
       <div className="comment-input-area" ref={inputAreaRef}>
-        {/* 回复预览 */}
         {replyTo && showReplyPreview && (
           <div className="reply-preview">
             <div className="reply-preview-header">
@@ -834,7 +853,6 @@ const CommentSection = ({ diaryId }) => {
           <span className="char-count">{content.length}/2000</span>
         </div>
 
-        {/* 待上传的图片预览 */}
         {pendingImages.length > 0 && (
           <div className="pending-images">
             {pendingImages.map((img, idx) => (
@@ -930,10 +948,23 @@ const CommentSection = ({ diaryId }) => {
         ) : (
           <>
             {sortedComments.map(comment => (
-              <CommentItem key={comment.id} comment={comment} />
+              <CommentItem 
+                key={comment.id} 
+                comment={comment}
+                isLiked={likedComments.has(comment.id)}
+                isLiking={likingInProgress.has(comment.id)}
+                isAuthenticated={isAuthenticated}
+                currentUserId={user?.id}
+                isAdmin={user?.role === 'admin'}
+                onLike={handleLike}
+                onReply={handleReplyClick}
+                onDelete={handleDelete}
+                onNavigate={navigate}
+                onLoadMoreReplies={loadMoreReplies}
+                loadingReplies={loadingReplies}
+              />
             ))}
             
-            {/* 加载更多 */}
             {hasMore && (
               <div 
                 ref={loadMoreRef}
@@ -956,7 +987,6 @@ const CommentSection = ({ diaryId }) => {
               </div>
             )}
             
-            {/* 没有更多 */}
             {!hasMore && comments.length > 0 && (
               <div className="no-more-comments">
                 <span>—— 没有更多评论了 ——</span>

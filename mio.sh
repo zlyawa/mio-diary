@@ -9,7 +9,7 @@
 set -e
 
 # ==================== 配置 ====================
-PROJECT_VERSION="2.1.0"
+PROJECT_VERSION="2.1.1"
 BACKEND_PORT=3001
 REDIS_PORT=6379
 FRONTEND_PORT=5173

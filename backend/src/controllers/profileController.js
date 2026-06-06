@@ -3,6 +3,7 @@ const prisma = require('../config/database');
 const fs = require('fs').promises;
 const path = require('path');
 const sharp = require('sharp');
+const { clearUserSessionCache } = require('../middleware/auth');
 
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
@@ -103,6 +104,9 @@ const updateProfile = async (req, res, next) => {
       message: '更新成功',
       user: updatedUser,
     });
+
+    // 清除会话缓存，使头像/个人简介变更立即生效
+    await clearUserSessionCache(userId).catch(() => {});
   } catch (error) {
     next(error);
   }
@@ -173,6 +177,9 @@ const uploadAvatar = async (req, res, next) => {
       message: '头像上传成功',
       user: updatedUser,
     });
+
+    // 清除会话缓存，使头像变更立即生效
+    await clearUserSessionCache(userId).catch(() => {});
   } catch (error) {
     if (req.file) {
       await fs.unlink(req.file.path).catch(() => {});
@@ -317,6 +324,34 @@ const changePassword = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: '请提供当前密码和新密码'
+      });
+    }
+
+    // 密码强度校验
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: '新密码长度不能少于8位'
+      });
+    }
+    if (newPassword.length > 100) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: '新密码长度不能超过100位'
+      });
+    }
+    const weakPasswords = ['password', '12345678', 'qwertyui', 'abc12345', 'password123', 'admin123', '123456789', '87654321'];
+    if (weakPasswords.includes(newPassword.toLowerCase())) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: '密码不能包含常见弱密码'
+      });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

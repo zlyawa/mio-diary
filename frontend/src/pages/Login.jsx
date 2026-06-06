@@ -6,13 +6,16 @@ import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
 import { useToast } from '../context/ToastContext';
 import { Eye, EyeOff, Lock, User, ArrowRight, Sparkles, Shield, Zap, BookOpen } from 'lucide-react';
-// import ErrorMessage from '../components/common/ErrorMessage'; // 保留原有组件
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getImageUrl } from '../utils/api';
 
 /**
  * 登录页面组件
  * 提供用户登录功能，支持邮箱/用户名登录、记住我、密码显示切换等功能
+ * 
+ * 安全说明：
+ * - 登录锁定完全由后端控制，前端不存储任何锁定状态
+ * - 后端使用数据库持久化限流，防止暴力破解
  */
 const Login = () => {
   const navigate = useNavigate();
@@ -22,8 +25,8 @@ const Login = () => {
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [lockoutTime, setLockoutTime] = useState(null);
+  // 后端返回的锁定状态（不使用 localStorage，防止绕过）
+  const [lockoutInfo, setLockoutInfo] = useState(null);
 
   const bgStyle = loginBg ? {
     backgroundImage: `url(${getImageUrl(loginBg)})`,
@@ -54,72 +57,58 @@ const Login = () => {
   });
 
   /**
-   * 检查账户锁定状态
+   * 锁定倒计时
    */
   useEffect(() => {
-    const savedAttempts = localStorage.getItem('loginAttempts');
-    const savedLockoutTime = localStorage.getItem('lockoutTime');
-    
-    if (savedAttempts) {
-      setAttempts(parseInt(savedAttempts, 10));
-    }
-    
-    if (savedLockoutTime) {
-      const lockoutEndTime = parseInt(savedLockoutTime, 10);
-      if (Date.now() < lockoutEndTime) {
-        setLockoutTime(lockoutEndTime);
-      } else {
-        localStorage.removeItem('lockoutTime');
-        localStorage.removeItem('loginAttempts');
-      }
-    }
-  }, []);
+    if (!lockoutInfo?.remainingTime) return;
 
-  /**
-   * 倒计时锁定时间
-   */
-  useEffect(() => {
-    if (lockoutTime) {
-      const interval = setInterval(() => {
-        if (Date.now() >= lockoutTime) {
-          setLockoutTime(null);
-          localStorage.removeItem('lockoutTime');
-          localStorage.removeItem('loginAttempts');
-          setAttempts(0);
+    const interval = setInterval(() => {
+      setLockoutInfo(prev => {
+        if (!prev) return null;
+        const newRemaining = prev.remainingTime - 1;
+        if (newRemaining <= 0) {
+          return null;
         }
-      }, 1000);
+        return { ...prev, remainingTime: newRemaining };
+      });
+    }, 1000);
 
-      return () => clearInterval(interval);
-    }
-  }, [lockoutTime]);
+    return () => clearInterval(interval);
+  }, [lockoutInfo]);
 
   /**
-   * 获取剩余锁定时间（分钟）
+   * 格式化剩余时间
    */
-  const getRemainingLockoutTime = () => {
-    if (!lockoutTime) return 0;
-    const remaining = Math.ceil((lockoutTime - Date.now()) / 60000);
-    return Math.max(0, remaining);
+  const formatRemainingTime = (seconds) => {
+    if (!seconds || seconds <= 0) return '0秒';
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (minutes > 0) {
+      return `${minutes}分${secs}秒`;
+    }
+    return `${secs}秒`;
   };
+
+  /**
+   * 是否被锁定
+   */
+  const isLocked = lockoutInfo && lockoutInfo.remainingTime > 0;
 
   /**
    * 处理登录提交
    */
   const onSubmit = async (data) => {
-    // 检查锁定状态
-    if (lockoutTime && Date.now() < lockoutTime) {
-      toast.error(`账户已锁定，请${getRemainingLockoutTime()}分钟后再试`);
+    // 如果当前被锁定，不发送请求
+    if (isLocked) {
+      toast.error(`账户已锁定，请${formatRemainingTime(lockoutInfo.remainingTime)}后再试`);
       return;
     }
 
     setIsLoading(true);
+    setLockoutInfo(null);
 
     try {
       const result = await login(data);
-      
-      // 登录成功，清除尝试次数和锁定信息
-      localStorage.removeItem('loginAttempts');
-      localStorage.removeItem('lockoutTime');
       
       // 处理"记住我"功能
       if (data.rememberMe) {
@@ -141,20 +130,18 @@ const Login = () => {
         }
       }, 500);
     } catch (err) {
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || '登录失败，请重试';
+      const status = err.response?.status;
+      const errorData = err.response?.data;
       
-      // 增加失败尝试次数
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      localStorage.setItem('loginAttempts', newAttempts.toString());
-      
-      // 5次失败后锁定15分钟
-      if (newAttempts >= 5) {
-        const lockoutEndTime = Date.now() + 15 * 60 * 1000;
-        setLockoutTime(lockoutEndTime);
-        localStorage.setItem('lockoutTime', lockoutEndTime.toString());
-        toast.error('登录失败次数过多，账户已锁定15分钟');
+      // 后端返回 429 表示触发限流锁定
+      if (status === 429 && errorData?.remainingTime) {
+        setLockoutInfo({
+          remainingTime: errorData.remainingTime,
+          message: errorData.message
+        });
+        toast.error(errorData.message || '登录失败次数过多，请稍后再试');
       } else {
+        const errorMessage = errorData?.error || errorData?.message || '登录失败，请重试';
         toast.error(errorMessage);
       }
     } finally {
@@ -252,14 +239,14 @@ const Login = () => {
                 </p>
               </div>
 
-              {/* 锁定提示 - 保留这个重要信息 */}
-              {lockoutTime && Date.now() < lockoutTime && (
+              {/* 锁定提示 - 完全依赖后端返回的锁定状态 */}
+              {isLocked && (
                 <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center flex-shrink-0">
                     <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <p className="text-sm text-amber-800 dark:text-amber-200">
-                    账户已锁定，请 {getRemainingLockoutTime()} 分钟后再试
+                    {lockoutInfo?.message || `账户已锁定，请 ${formatRemainingTime(lockoutInfo?.remainingTime)} 后再试`}
                   </p>
                 </div>
               )}
@@ -286,7 +273,7 @@ const Login = () => {
                         required: '请输入邮箱或用户名',
                         minLength: { value: 3, message: '用户名至少需要3个字符' }
                       })}
-                      disabled={isLoading || (lockoutTime && Date.now() < lockoutTime)}
+                      disabled={isLoading || isLocked}
                       className="input-field pl-12"
                       placeholder="请输入邮箱或用户名"
                     />
@@ -319,7 +306,7 @@ const Login = () => {
                         required: '请输入密码',
                         minLength: { value: 6, message: '密码至少需要6个字符' }
                       })}
-                      disabled={isLoading || (lockoutTime && Date.now() < lockoutTime)}
+                      disabled={isLoading || isLocked}
                       className="input-field pl-12 pr-12"
                       placeholder="请输入密码"
                     />
@@ -346,7 +333,7 @@ const Login = () => {
                     <input
                       type="checkbox"
                       {...register('rememberMe')}
-                      disabled={isLoading || (lockoutTime && Date.now() < lockoutTime)}
+                      disabled={isLoading || isLocked}
                       className="w-5 h-5 text-indigo-600 border-gray-300 rounded-lg focus:ring-indigo-500 focus:ring-2 dark:border-gray-600 dark:bg-gray-700 transition-colors"
                     />
                     <span className="ml-2 text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">
@@ -364,7 +351,7 @@ const Login = () => {
                 {/* 登录按钮 */}
                 <button
                   type="submit"
-                  disabled={isLoading || isSubmitting || (lockoutTime && Date.now() < lockoutTime)}
+                  disabled={isLoading || isSubmitting || isLocked}
                   className="btn-primary w-full py-3.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
                   {isLoading ? (

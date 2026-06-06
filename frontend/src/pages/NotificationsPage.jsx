@@ -204,7 +204,7 @@ const NotificationsPage = () => {
   if (loading && notifications.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

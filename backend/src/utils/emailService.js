@@ -7,14 +7,19 @@ const prisma = require('../config/database');
  * 提供邮件发送、模板渲染等功能
  */
 
-// 获取加密密钥（使用固定的开发密钥或从环境变量读取）
+// 获取加密密钥（生产环境必须从环境变量读取）
 const getEncryptionKeys = () => {
-  const key = process.env.CONFIG_ENCRYPTION_KEY || 'MioDiary2026SecretKey32Chars!!';
-  const iv = process.env.CONFIG_ENCRYPTION_IV || 'MioDiaryIV16!!';
-  
+  const isProduction = process.env.NODE_ENV === 'production';
+  const key = process.env.CONFIG_ENCRYPTION_KEY;
+  const iv = process.env.CONFIG_ENCRYPTION_IV;
+
+  if (isProduction && (!key || !iv)) {
+    throw new Error('生产环境必须设置 CONFIG_ENCRYPTION_KEY 和 CONFIG_ENCRYPTION_IV 环境变量');
+  }
+
   return {
-    key: Buffer.from(key.padEnd(32).slice(0, 32)),
-    iv: Buffer.from(iv.padEnd(16).slice(0, 16))
+    key: Buffer.from((key || 'MioDiary2026SecretKey32Chars!!').padEnd(32).slice(0, 32)),
+    iv: Buffer.from((iv || 'MioDiaryIV16!!').padEnd(16).slice(0, 16))
   };
 };
 
@@ -369,7 +374,7 @@ const verifySMTPConfig = async (smtpConfig) => {
  * 生成验证码
  */
 const generateVerificationCode = () => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return require('crypto').randomBytes(4).toString('hex').toUpperCase();
 };
 
 module.exports = {

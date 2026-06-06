@@ -1,23 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useConfig } from '../context/ConfigContext';
 import { useToast } from '../context/ToastContext';
 import { Mail, Lock, KeyRound, ArrowLeft, Check, RefreshCw, Send } from 'lucide-react';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import api, { getImageUrl } from '../utils/api';
-import { sanitizeText, sanitizeSVG } from '../utils/security';
+import { sanitizeSVG } from '../utils/security';
 
 /**
  * 忘记密码页面
  * 仅在启用邮箱验证时可用
  */
 const ForgotPassword = () => {
-  const navigate = useNavigate();
   const { enableEmailVerify, forgotPasswordBg, loading: configLoading } = useConfig();
   const toast = useToast();
-  const [error, setError] = useState('');
+  const [, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -27,6 +25,7 @@ const ForgotPassword = () => {
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSvg, setCaptchaSvg] = useState('');
   const [captchaLoading, setCaptchaLoading] = useState(false);
+  const countdownTimerRef = useRef(null);
 
   const {
     register,
@@ -45,6 +44,15 @@ const ForgotPassword = () => {
       setError('忘记密码功能需要先开启邮箱验证。请联系管理员。');
     }
   }, [configLoading, enableEmailVerify]);
+
+  // 清理倒计时定时器
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+    };
+  }, []);
 
   // 获取图片验证码
   const fetchCaptcha = useCallback(async () => {
@@ -106,6 +114,7 @@ const ForgotPassword = () => {
           return prev - 1;
         });
       }, 1000);
+      countdownTimerRef.current = timer;
     } catch (err) {
       toast.error(err.response?.data?.message || '发送验证码失败');
       fetchCaptcha(); // 刷新验证码
@@ -143,7 +152,7 @@ const ForgotPassword = () => {
   if (configLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

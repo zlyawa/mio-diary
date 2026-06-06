@@ -7,26 +7,18 @@ import {
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import Header from '../components/layout/Header';
-// import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useToast } from '../context/ToastContext';
 import Skeleton from '../components/common/Skeleton';
 import CommentSection from '../components/comments/CommentSection';
 import LikeButton from '../components/interactions/LikeButton';
 import FavoriteButton from '../components/interactions/FavoriteButton';
-import api from '../utils/api';
+import api, { getImageUrl } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
-import { getImageUrl } from '../utils/api';
-
-/**
- * API基础URL（用于API请求）
- */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 /**
  * 静态文件基础URL（用于访问上传的图片）
- * 注意：后端静态文件服务直接挂载在 /uploads 路径下，而不是在 /api 下
  */
 const UPLOAD_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -105,7 +97,9 @@ const DiaryDetail = () => {
       console.error('获取日记失败:', err);
       // 认证错误静默处理，不显示错误提示
       if (!err.isAuthError) {
-        toast.error(err.response?.data?.error || err.response?.data?.message || '获取日记失败');
+        const errMsg = err.response?.data?.error || err.response?.data?.message || '获取日记失败';
+        setError(errMsg);
+        toast.error(errMsg);
       }
       setDiary(null);
     } finally {

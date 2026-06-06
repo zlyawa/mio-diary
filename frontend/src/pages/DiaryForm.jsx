@@ -208,17 +208,7 @@ const DiaryForm = () => {
         return;
       }
 
-      // 打印提交的数据用于调试
-      console.log('Submitting diary:', {
-        title: data.title,
-        content: content,
-        contentLength: content?.length,
-        mood,
-        tags,
-        images,
-        categoryId,
-      });
-
+      // 准备提交数据
       const diaryData = {
         title: data.title.trim(),
         content: content, // 直接使用原始 HTML，不做任何处理
@@ -351,7 +341,7 @@ const DiaryForm = () => {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Header />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <LoadingSpinner size="large" />
+          <LoadingSpinner size="lg" />
         </div>
       </div>
     );
